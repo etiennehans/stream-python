@@ -123,58 +123,71 @@ def initialize_regulations(Simulation):
         # ...
         # Adapt the simulation with a managed Lane
         if Regulation['Type'] == 'managed_lane':
-            for managedLaneLink in Regulation['Args']['Links']:
-                # Creation of a new link
-                newLinkID = max(list(Simulation["Links"]))+1
-                newLink = copy.deepcopy(Simulation["Links"][managedLaneLink])
-                newLink["NumLanes"] = 1
-                Simulation["Links"].update({newLinkID: newLink})
-                if "Capacity" in list(Regulation['Args'].keys()):
-                    newLink["Capacity"] = Regulation['Args']['Capacity']
-                    update_link_DF(Simulation["Links"], newLinkID)
-                else:
-                    Simulation["Links"][newLinkID]["Capacity"] = Simulation["Links"][managedLaneLink]["FD"]["C"]
-
-                # ...
-                # Modify the existing link
-                NumLanes = Simulation["Links"][managedLaneLink]['NumLanes']
-                ratio1 = (NumLanes-1)/NumLanes
-                LaneProbability = [ratio1, 1-ratio1]
-                LaneProbabilities = [LaneProbability for vehclass in list(
-                    Simulation['VehicleClass'])]
-
-                # Capacity
-                if "Capacity" in list(Regulation['Args'].keys()):
-                    cap = NumLanes * \
-                        Simulation["Links"][managedLaneLink]["FD"]["C"] - \
-                        Regulation['Args']['Capacity']
-                else:
-                    cap = (NumLanes-1) * \
-                        Simulation["Links"][managedLaneLink]["FD"]["C"]
-
-                Simulation["Links"][managedLaneLink].update({
-                    'AssociatedLink': newLinkID,
-                    'LaneProbabilities': LaneProbabilities,
-                    'NumLanes': (NumLanes-1),
-                    'Capacity': cap
-                })
-                update_link_DF(Simulation["Links"], managedLaneLink)
-
-                # ...
-                # Modify the nodes
-                nodeup = Simulation["Links"][managedLaneLink]["NodeUpID"]
-                Simulation["Nodes"][nodeup]["OutgoingLinksID"] = np.concatenate((
-                    Simulation["Nodes"][nodeup]["OutgoingLinksID"], np.array([newLinkID])))
-                Simulation["Nodes"][nodeup]["NumOutgoingLinks"] += 1
-                # ...
-                nodedown = Simulation["Links"][managedLaneLink]["NodeDownID"]
-                Simulation["Nodes"][nodedown]["IncomingLinksID"] = np.concatenate((
-                    Simulation["Nodes"][nodedown]["IncomingLinksID"], np.array([newLinkID])))
-                Simulation["Nodes"][nodedown]["NumIncomingLinks"] += 1
-                Simulation["Nodes"][nodedown]["CapacityDrop"] = np.array([0.] *
-                                                                         (Simulation["Nodes"][nodedown]["NumIncomingLinks"] + 1))
-                Simulation["Nodes"][nodedown].update(recalculateAlphaOD(
-                    Simulation["Nodes"][nodedown], Simulation["Links"]))
+            for iLinkHOL, managedLaneLink in enumerate(Regulation['Args']['Links']):
+                
+                if 'Links_HOL' in list(Regulation['Args']):
+                    # high_occupancy-lanes are already implemened in the network
+                    # we do not have to create them
+                    NumLanes = Simulation["Links"][managedLaneLink]['NumLanes']
+                    ratio1 = NumLanes/(NumLanes+1)
+                    LaneProbability = [ratio1, 1-ratio1]
+                    LaneProbabilities = [LaneProbability for vehclass in list(Simulation['VehicleClass'])]
+                    # ...
+                    Simulation["Links"][managedLaneLink]['AssociatedLink'] = Regulation['Args']['Links_HOL'][iLinkHOL]
+                    Simulation["Links"][managedLaneLink]['LaneProbabilities'] = LaneProbabilities
+                    
+                else:    
+                    # Creation of a new link
+                    newLinkID = max(list(Simulation["Links"]))+1
+                    newLink = copy.deepcopy(Simulation["Links"][managedLaneLink])
+                    newLink["NumLanes"] = 1
+                    Simulation["Links"].update({newLinkID: newLink})
+                    if "Capacity" in list(Regulation['Args'].keys()):
+                        newLink["Capacity"] = Regulation['Args']['Capacity']
+                        update_link_DF(Simulation["Links"], newLinkID)
+                    else:
+                        Simulation["Links"][newLinkID]["Capacity"] = Simulation["Links"][managedLaneLink]["FD"]["C"]
+    
+                    # ...
+                    # Modify the existing link
+                    NumLanes = Simulation["Links"][managedLaneLink]['NumLanes']
+                    ratio1 = (NumLanes-1)/NumLanes
+                    LaneProbability = [ratio1, 1-ratio1]
+                    LaneProbabilities = [LaneProbability for vehclass in list(
+                        Simulation['VehicleClass'])]
+    
+                    # Capacity
+                    if "Capacity" in list(Regulation['Args'].keys()):
+                        cap = NumLanes * \
+                            Simulation["Links"][managedLaneLink]["FD"]["C"] - \
+                            Regulation['Args']['Capacity']
+                    else:
+                        cap = (NumLanes-1) * \
+                            Simulation["Links"][managedLaneLink]["FD"]["C"]
+    
+                    Simulation["Links"][managedLaneLink].update({
+                        'AssociatedLink': newLinkID,
+                        'LaneProbabilities': LaneProbabilities,
+                        'NumLanes': (NumLanes-1),
+                        'Capacity': cap
+                    })
+                    update_link_DF(Simulation["Links"], managedLaneLink)
+    
+                    # ...
+                    # Modify the nodes
+                    nodeup = Simulation["Links"][managedLaneLink]["NodeUpID"]
+                    Simulation["Nodes"][nodeup]["OutgoingLinksID"] = np.concatenate((
+                        Simulation["Nodes"][nodeup]["OutgoingLinksID"], np.array([newLinkID])))
+                    Simulation["Nodes"][nodeup]["NumOutgoingLinks"] += 1
+                    # ...
+                    nodedown = Simulation["Links"][managedLaneLink]["NodeDownID"]
+                    Simulation["Nodes"][nodedown]["IncomingLinksID"] = np.concatenate((
+                        Simulation["Nodes"][nodedown]["IncomingLinksID"], np.array([newLinkID])))
+                    Simulation["Nodes"][nodedown]["NumIncomingLinks"] += 1
+                    Simulation["Nodes"][nodedown]["CapacityDrop"] = np.array([0.] *
+                                                                             (Simulation["Nodes"][nodedown]["NumIncomingLinks"] + 1))
+                    Simulation["Nodes"][nodedown].update(recalculateAlphaOD(
+                        Simulation["Nodes"][nodedown], Simulation["Links"]))
     # ...
     return Simulation
 
