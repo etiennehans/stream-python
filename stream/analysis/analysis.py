@@ -95,9 +95,9 @@ def compute_stats_on_links( Simulation, TravelTimes = None, StepTime=60 ):
         # ...
         # Flow
         AT = TravelTimes[ilink]["ArrivalTimes"]
-        Statistics[ilink]["Flows"] = (3600/StepTime) * np.histogram( AT, bins=Bins )[0] # veh/h
+        Statistics[ilink]["Flows"] = Simulation['General']['Peloton'] * (3600/StepTime) * np.histogram( AT, bins=Bins )[0] # veh/h
         DT = TravelTimes[ilink]["DepartureTimes"]
-        Statistics[ilink]["InFlows"] = (3600/StepTime) * np.histogram( DT, bins=Bins )[0] # veh/h
+        Statistics[ilink]["InFlows"] = Simulation['General']['Peloton'] * (3600/StepTime) * np.histogram( DT, bins=Bins )[0] # veh/h
         # ...
         # Demand if relevant
         nodeup = Simulation['Links'][ilink]['NodeUpID']
