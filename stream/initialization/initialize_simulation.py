@@ -232,7 +232,27 @@ def initialize_actions(Simulation):
                     Action['Args'] = {
                         'LinkID': managedLaneLink, 'Class': Regulation['Args']['Class'], 'Display': True}
                     Simulation['Actions'].append(Action)
-    # ...
+        # ...
+        
+        # Capacity Regulation
+        if Regulation['Type'] == 'exit_supply':
+            link = Regulation['links'][0]:
+                activated = False
+                for time in Regulation['Args']['Times']:
+                    # ....
+                    Action = {}
+                    Action['Time'] = time
+                    if activated:
+                        Action['Type'] = 'managed_lane_deactivation'
+                        activated = False
+                    else:
+                        Action['Type'] = 'managed_lane_activation'
+                        activated = True
+                    Action['Args'] = {
+                        'LinkID': managedLaneLink, 'Class': Regulation['Args']['Class'], 'Display': True}
+                    Simulation['Actions'].append(Action)
+    
+    
     # Sort actions
     Simulation['Actions'] = sortActionsByTime(Simulation["Actions"])
     # ...

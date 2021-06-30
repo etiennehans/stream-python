@@ -133,7 +133,14 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
             print(values)
             print("----------------------")
         S["Links"][firstLinkID]["LaneProbabilities"] = values
-
+        
+    if NextAction['Type'] in ['exit_supply','speed_limit','crash','lane_reduction','ramp_metering']: 
+        firstLinkID = NextAction['Args']['LinkID']
+        classID = NextAction['Args']['Class']
+        capacityforced = NextAction['Args']['CapacityForced']
+        S['Links'][fisrtLinkID]['CapacityForced'] = capacityforced
+        # ...
+        
     # ...
     ListActions, NextAction = compute_next_action(
         S['Actions'], ListActions, NextAction)
@@ -474,7 +481,7 @@ def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClas
         # s'il y a une valeur de Capacity Forced indique au noeud, alors elle s'applique
         if Nodes[NodeID]["CapacityForced"] < np.inf:
             h_down = 1/Nodes[NodeID]["CapacityForced"]
-
+        PENSER A FAIRE UN MIN 
     h_down = h_down * General["Peloton"]
     Event_NodeID["SupplyTimes"]["DownCapacity"][out] = current_time + h_down
 
