@@ -297,6 +297,137 @@ def initialize_actions(Simulation):
                         'FunctionToCall': function_to_call
                     }
                 })
+
+        #exit supply                
+        if Regulation['Type'] == 'exit_supply':
+            ExitCapacity  = [parameter['exit_capacity'] for parameter in Regulation['Args']['Parameters']]
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:
+                for time,exit_capacity in zip(Times,ExitCapacity):
+                    Actions.append({'LinkID' : link,
+                        'Time': time,
+                        'Type': 'exit_supply',
+                        'Args': {
+                            'exit_capacity': exit_capacity
+                        }
+                    })
+            # ...
+                
+        #ramp_metering 
+        if Regulation['Type'] == 'ramp_metering':
+            signalcapacity  = [parameter['signal_capacity'] for parameter in Regulation['Args']['Parameters']]
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:        
+                for time,signalcapacity in zip(Times,ExitCapacity):
+                    Actions.append({'LinkID': link,
+                        'Time': time,
+                        'Type': 'ramp_metering',
+                        'Args': {
+                            'Signal_capacity': signalcapacity
+                        }
+                    })
+            # ...
+                            
+        if Regulation['Type'] == 'speed_limit_neovya':
+            Speed = [parameter['speed'] for parameter in Regulation['Args']['Parameters']]
+            IncreaseCapacity = [parameter['speed'] for parameter in Regulation['Args']['Parameters']]
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:
+                for time,speed,increasecapacity in zip(Times,Speed,IncreaseCapacity):
+                    Actions.append({'LinkID': link,
+                        'Time': time,
+                        'Type': 'speed_limit_neovya',
+                        'Args': {
+                            'Speed': speed,
+                            'Increase_capacity' : increasecapacity
+                        }
+                    })  
+            # ...
+            
+        if Regulation['Type'] == 'demand_variation_path':
+            Flow = [parameter['flow'] for parameter in Regulation['Args']['Parameters']]
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:
+                for time,flow in zip(Times,Flow):
+                    Actions.append({'LinkID' : link,
+                        'Time': time,
+                        'Type': 'demand_variation_path',
+                        'Args': {
+                            'Flow': flow
+                        }
+                    })   
+            # ...
+            
+        if Regulation['Type'] == 'demand_modulation':
+            Modulations =  [parameter['modulation'] for parameter in Regulation['Args']['Parameters']]
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:
+                for time,modulation in zip(Times,Modulations):
+                    Actions.append({'LinkID' : link,
+                        'Time': time,
+                        'Type': 'demand_modulation',
+                        'Args': {
+                            'modulation': modulation
+                        }
+                    })               
+             # ... 
+            
+        if Regulation['Type'] == 'lane_reduction' or Regulation['Type'] == 'crash' :
+            remaining_lanes = Regulation['Args']['remaining_lanes']
+            new_time = Regulation['Args']['Times']
+            links = Regulation['Args']['Links']
+            for link in links:
+                Actions.append({'LinkID' : link,
+                        'Time': new_time[0],
+                        'Type': 'lane_reduction',
+                        'Args': {
+                            'remaining_lane': remaining_lanes,
+                            'end_reduction' : new_time[1]
+                        }
+                    })     
+                Actions.append({'LinkID' : link,
+                        'Time': new_time[1],
+                        'Type': 'lane_reduction',
+                        'Args': {
+                            'remaining_lane': remaining_lanes,
+                            'begin_reduction' : new_time[0]
+                        }
+                    })
+            # ...
+                      
+        if Regulation['Type'] == 'variable_free_speed':
+            speed_drop_at_capacity = Regulation['Args']['speed_drop_at_capacity']
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:
+                for time,modulation in zip(Times,Modulations):
+                    Actions.append({'LinkID' : link,
+                        'Time': Times[0],
+                        'Type': 'variable_free_speed',
+                        'Args': {
+                            'speed_drop_at_capacity': speed_drop_at_capacity
+                        }
+                    })               
+            # ...
+            
+        if Regulation['Type'] == 'storm': 
+            Times = Regulation['Args']['Times']
+            Links = Regulation['Links']
+            for link in Links:
+                for time,modulation in zip(Times,Modulations):
+                    Actions.append({'LinkID' : link,
+                        'Time': Times[0],
+                        'Type': 'storm',
+                        'Args': Regulation['Args']
+                    })                      
+            # ...
+    
+    
     # ...
     # Sort actions
     Actions = sortActionsByTime(Actions)
@@ -308,7 +439,53 @@ def initialize_actions(Simulation):
 # =============================================================================
 # Sub-functions
 # =============================================================================
+def init_action_by_link(links,period):
+    actions_by_links = {}    
+    for link in links:
+        actions_by_links[link] = ([np.inf,np.inf],period)
+    return actions_by_links
 
+def signal_to_capacity(signalcapacity):
+    
+    return(capacityforced)
+
+def merge_time_and_data(current_data,current_time,new_time,new_data):
+    i1,i2 = get_extremum(current_time,new_time)
+    n = len(current_time)
+    final_data = current_data[:i1]
+    final_time = current_time[:i1]
+    
+    #init
+    final_time.append(new_time[0])
+    final_data.append(min(current_data[i1],new_data))
+    
+    #general case
+    for k in range(i1,i2):
+        final_data.append(min(current_data[k],new_data))
+        final_time.append(current_time[k])
+    
+    final_time.append(new_time[1])
+    final_data.append(min(np.inf,current_data[i2-1]))
+    
+    if current_time[i2] == new_time[1]:
+        i2 = i2+1
+    #final case
+    final_time = final_time + current_time[i2:]
+    final_data = final_data + current_data[i2:]
+    return(final_data,final_time)
+    
+def get_extremum(v,t):
+    '''return the exact position of t[0],t[1] in ordered v'''
+    x1,x2 = t
+    i1,i2 = 0,0
+    n = len(v)
+    k = 0
+    while k< n and x2 >= v[k]:
+        k = k+1
+        if v[k] < x1:
+            i1 = k
+    i2 = k
+    return(i1+1,i2)
 
 def recalculateAlphaOD(node, Links):
     node.update({"AlphaOD": np.array([])})

@@ -37,10 +37,8 @@ def main_simulation_meso(S, T, disp='time'):
                 S, ListEvents, NextEvent)
 
         else:
-            # gérer l'action
-            # (modifier liste action, next action)
-            ListActions, NextAction = tackle_action(
-                S, ListActions, NextAction, disp=disp)
+            ListActions, NextAction,dic_action_in_progress = tackle_action(
+                S, ListActions, NextAction, dic_action_in_progress, disp=disp)
 
     return S
 
@@ -73,7 +71,7 @@ def compute_next_action(Actions, ListActions=None, NextAction=None):
     return (ListActions, NextAction)
 
 
-def tackle_action(S, ListActions, NextAction, disp='time'):
+def tackle_action(S, ListActions, NextAction,action_queue, end_actions, dic_action_in_progress, disp='time'):
     # ...
     # we deals with actions
     # ...
@@ -165,12 +163,128 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
         print(
             f"@Stream: [{NextAction['Time']}], custom regulation calling function {func.__name__}")
         func(S)
+        
+        
+        
+    if NextAction['Type'] == 'exit_supply' :
+        concerned_link = NextAction['LinkID']
+        exit_capacity = NextAction['Args']['exit_capacity']       
+        action_in_progress = dic_action_in_progress[concerned_link]['capacity_limit']
+        if NextAction['status'] == 'Begin':
+            action_in_progress.append(NextAction)
+        else:
+            action_in_progress = delete_action_from_list(NextAction,action_in_progress)
+        
+        if action_in_progress == []:
+            S['Links'][concerned_link]['Changes']['capacity_limit'] = np.inf
+        else:
+            S['Links'][concerned_link]['Changes']['capacity_limit'] = min([action['Args']['exit_capacity'] for action in action_in_progress])
+        # ...
+    if NextAction['Type'] == 'speed_limit_neovya':
+        concerned_link = NextAction['LinkID']
+        speed, increase_capacity = NextAction['Args']['speed'],NextAction['Args']['increase_capacity']
+        
+        speed_action_in_progress = dic_action_in_progress[concerned_link]['speed_limit']
+        capacity_action_in_progress = dic_action_in_progress[concerned_link]['increase_capacity']
+        
+        if NextAction['status'] == 'Begin':
+            speed_action_in_progress.append(NextAction)
+            capacity_action_in_progress.append(NextAction)
+        else:
+            speed_action_in_progress = delete_action_from_list(NextAction,speed_action_in_progress)
+            capacity_action_in_progress = delete_action_from_list(NextAction,capacity_action_in_progress)            
+            
+            
+        if speed_action_inprogress == []:
+            S['Links'][concerned_link]['Changes']['speed_limit'] = np.inf
+        else:
+            S['Links'][concerned_link]['Changes']['speed_limit'] = min([action['Args']['speed_limit'] for action in speed_action_in_progress])
+           
+        
+        if speed_action_in_progress == []:
+            S['Links'][concerned_link]['Changes']['increase_capacity'] = 0
+        else:
+            S['Links'][concerned_link]['Changes']['increase_capacity'] = min([action['Args']['increase_capacity'] for action in capacity_action_in_progress])    
+        
+        # ...  
+        
+    if NextAction['Type'] == 'demand_variation_path':
+        concerned_link = NextAction['LinkID']
+        flow = NextAction['Args']['Flow']
+        ''' JE RAJOUTE DE NOUVEAUX VEHICULES ?    '''    
+        #... 
+        
+    if NextAction['Type'] == 'ramp_metering':
+        concerned_link = NextAction['LinkID']
+        signalcapacity = NextAction['Args']['Signal_capacity']
+        capacity_action_in_progress = dic_action_in_progress[concerned_link]['Signal_capacity']
+        if NextAction['status'] == 'Begin':
+            capacity_action_in_progress.append(NextAction)
+        else:
+            capacity_action_in_progress = delete_action_from_list(NextAction,capacity_action_in_progress)
+        ''' J'APPLIQUE CA OU ? '''                
+        if capacity_action_in_progress == []:
+            S['Links'][concerned_link]['Changes']['b'] = 0
+        else:
+            S['Links'][concerned_link]['Changes']['b'] = min([action['Args']['increase_capacity'] for action in capacity_action_in_progress])    
+ 
+        # ...
+        
+    if NextAction['Type'] == 'demand_modulation':
+        concerned_link = NextAction['LinkID']
+        modulation = NextAction['Args']['modulation']
+        ''' J'APPLIQUE CA OU ? '''    
+        # ...
+        
+    if NextAction['Type'] == 'lane_reduction':
+        concerned_link = NextAction['LinkID']
+        remaining_lanes  = NextAction['Args']['remaining_lane']
 
+        capacity_action_in_progress = dic_action_in_progress[concerned_link]['capacity_factor']
+        if NextAction['status'] == 'Begin':
+            capacity_action_in_progress.append(NextAction)
+        else:
+            capacity_action_in_progress = delete_action_from_list(NextAction,capacity_action_in_progress)
+        if capacity_action_in_progress == []:
+            S['Links'][concerned_link]['Changes']['capacity_factor'] = 1
+        else:
+            S['Links'][concerned_link]['Changes']['capacity_factor'] = min([action['Args']['remaining_lane'] for action in capacity_action_in_progress])/S['Links'][concerned_link]['NumLanes']
+        # ...
+        
+    if NextAction['Type'] == 'variable_free_speed':
+        concerned_link = NextAction['LinkID']
+        speed_drop_at_capacity  = NextAction['Args']['speed_drop_at_capacity']
+        ''' J'APPLIQUE CA OU  ? '''    
+        # ...
+        
+    if NextAction['Type'] == 'storm':
+        
+        concerned_link = NextAction['LinkID']
+        speed_modulation = NextAction['Args']['speed_modulation']
+        wavespeed_modulation = NextAction['Args']['wavespeed_modulation'] 
+        capacity_modulation = NextAction['Args']['capacity_modulation']
+        S['Links'][concerned_link]['Ref']['speed'] = S['Links'][concerned_link]['Capacity']*capacity_modulation# ...        
+        S['Links'][concerned_link]['Ref']['Capacity'] = S['Links'][concerned_link]['speed']*speed_modulation# ...        
+        ''' QUE FAIRE DE WAVESPEED MODULATION ? '''  
+        #...
+    # ...
+    ''' élément non linéaire, ordre important, et on doit garder en mémoire les différentes limitation pour revenir 
+        à la dernière 'meilleur' limitation en date. 
+        
+        idée : queue d'élément "en cours de traitement", rangée dans un dictionaire par type de modification.
+                  dès qu'un élément à fini d'être traité, on prend soit la valeur de référence, soit la meilleur
+                  valeur a prendre parmis les élément encore en cours dans ce type de modification'''          
+        
+        
+        
+        
+        
+        
     # ...
     ListActions, NextAction = compute_next_action(
         S['Actions'], ListActions, NextAction)
     # ...
-    return ListActions, NextAction
+    return ListActions, NextAction,dic_action_in_progress
 
 
 # =============================================================================
@@ -501,13 +615,13 @@ def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClas
     else:
         # If NodeID is an entry node or an internal node : the capacity
         # depends on the capacity of the downstream link
-        Capacity = (1 - Nodes[NodeID]["CapacityDrop"][IN]) * \
-            Links[Nodes[NodeID]["OutgoingLinksID"][out]]["Capacity"]
+        '''Capacity = (1 - Nodes[NodeID]["CapacityDrop"][IN]) * \
+            Links[Nodes[NodeID]["OutgoingLinksID"][out]]["Capacity"]'''
+        Capacity = ()
         h_down = 1/Capacity
         # s'il y a une valeur de Capacity Forced indique au noeud, alors elle s'applique
         if Nodes[NodeID]["CapacityForced"] < np.inf:
             h_down = 1/Nodes[NodeID]["CapacityForced"]
-        PENSER A FAIRE UN MIN 
     h_down = h_down * General["Peloton"]
     Event_NodeID["SupplyTimes"]["DownCapacity"][out] = current_time + h_down
 
