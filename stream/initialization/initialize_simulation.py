@@ -118,6 +118,7 @@ def complete_general(General):
 def initialize_regulations(Simulation):
     '''account for regulations and modify Simulation dictioaries'''
     # ...
+    nextVehID = len(list(Simulation['Vehicles']))+1
     for reg in list(Simulation["Regulations"]):
         Regulation = Simulation["Regulations"][reg]
         # ...
@@ -203,8 +204,30 @@ def initialize_regulations(Simulation):
         # Adapt the simulation with a dynamic_speed_adaptation
         if Regulation['Type'] == 'dynamic_speed_adaptation':
             pass
-
-    # ...
+        
+        if False:
+            if Regulation['Type'] == 'demand_variation_path':
+                path = Regulation['Args']['Links']
+                nodelist = [Simulation['Links'][linkid]['NodeUpID'] for linkid in path]
+                exitid = Simulation['Links'][path[len(path)-1]]['NodeDownID']
+                nodelist.append(exitid)
+                Times = Regulation['Args']['Times']
+                Flow = Regulation['Args']['Flow']
+                for k,flow in enumerate(Flow):
+                    time0,time1 = Times[k],Times[k+1]
+                    time01 = np.linspace(time0,time1,nbveh)
+                    for arrivaltime in time01:
+                        for vehclass in VehicleClass:
+                            for k in range(nbveh[vehclass]):
+                                vehicle = { 'EntryID' : nodelist[0], 'ExitID' : exitid, 'VehicleClass' : vehclass, 
+                                       'NetworkArrivalTime' : arrivaltime, 'IDRoute': 0, 'Path' : path, 'NodeList' : nodelist,
+                                       'CurrentNode' : -1, 'RealPath' : []}
+                            
+                                Simulation['Vehicles'][nextVehID] = vehicle
+                            
+                            
+                                nextVehID = nextVehID +1
+        # ...
     return Simulation
 
 
@@ -215,7 +238,21 @@ def initialize_actions(Simulation):
     if not "Actions" in list(Simulation):
         Simulation["Actions"] = []
     Actions = []
+    SimulationDuration = Simulation['General']['SimulationDuration']
+    [begin_simu,end_simu] = SimulationDuration 
+
     # ...
+    
+    #Init dictionnary link2exitnodes
+    link2exitnodes = {}
+    for exitnode in Simulation['Exits']:
+        Links = Simulation['Exits'][exitnode]['IncomingLinksID']
+        for link in Links:
+            link2exitnodes[link] = exitnode
+    #...
+    next_signal_id = max(list(Simulation['Signals']))
+    
+    
     # Display times
     step_time = Simulation["General"]["TimesStepByDefault"]  # sec
     if step_time != None and step_time > 0:
@@ -240,7 +277,7 @@ def initialize_actions(Simulation):
             for managedLaneLink in Regulation['Args']['Links']:
                 activated = False
                 for time in Regulation['Args']['Times']:
-                    # ....
+                    # ...
                     Action = {}
                     Action['Time'] = time
                     if activated:
@@ -302,135 +339,146 @@ def initialize_actions(Simulation):
         if Regulation['Type'] == 'exit_supply':
             ExitCapacity  = [parameter['exit_capacity'] for parameter in Regulation['Args']['Parameters']]
             Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
+            if Times[0] is None:
+                Times[0] = begin_simu
+            if len(Times) > 1:
+                if Times[len(Times)-1] is None:
+                    Times[len(Times)-1] = end_simu
+            else:
+                Times.append(end_simu)
+            Links = Regulation['Args']['Links']
+            Times,ExitCapacity = addapt_vector_to_simu(begin_simu,end_simu,Times,ExitCapacity)
+            #
             for link in Links:
-                for time,exit_capacity in zip(Times,ExitCapacity):
-                    Actions.append({'LinkID' : link,
-                        'Time': time,
-                        'Type': 'exit_supply',
-                        'Args': {
-                            'exit_capacity': exit_capacity
-                        }
-                    })
+                try : 
+                    exitnode = link2exitnodes[link]
+                except:
+                    exitnode = None
+                    print(" 'exit_node' doesn't exist for linkid : ", link)
+                if exitnode is not None:
+                    current_times,current_data = Simulation['Exits'][exitnode]['Supply']['Time'],Simulation['Exits'][exitnode]['Supply']['Data']
+                    for k in range(len(ExitCapacity)):
+                        begin,end = Times[k],Times[k+1]
+                        data = ExitCapacity[k]
+                        if data is None:
+                            data = np.inf
+                        current_times,current_data = add_single_element_to_sorted_data(begin,end,data,current_times,current_data)
+                    Simulation['Exits'][exitnode]['Supply']['Time'] = current_times
+                    Simulation['Exits'][exitnode]['Supply']['Data'] = current_data
             # ...
-                
+
         #ramp_metering 
         if Regulation['Type'] == 'ramp_metering':
-            signalcapacity  = [parameter['signal_capacity'] for parameter in Regulation['Args']['Parameters']]
+            #en aval du lien -> on prend le NodeDownID, et on récupère ses IncomingLinksID
+            Links = Regulation['Args']['Links']
             Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
-            for link in Links:        
-                for time,signalcapacity in zip(Times,ExitCapacity):
-                    Actions.append({'LinkID': link,
-                        'Time': time,
-                        'Type': 'ramp_metering',
-                        'Args': {
-                            'Signal_capacity': signalcapacity
-                        }
-                    })
-            # ...
+            signalcapacities  = [parameter['signal_capacity'] for parameter in Regulation['Args']['Parameters']]
+            #for each ramp metering
+            for k,signalcapacity in enumerate(signalcapacities):
+                if signalcapacity is not None:
+                    cycle_time = 1/signalcapacity
+                    green = min(0.5,cycle_time/2)
+                    duration = [Times[k],Times[k+1]]
+                    Simulation['Signals'][next_signal_id] = makeSignalTimes(green, cycle_time-green, duration)        
+                    print('Le signal ', Simulation['Signals'][next_signal_id], ' de ID ', next_signal_id, ' à été ajouté' )
+                    
+                    #tackle all concerned link
+                    for link in Links:
+                        nodeid = Simulation['Links'][link]['NodeDownID']
+                        signals = Simulation['Nodes'][nodeid]['SignalsID']
+                        incominglinksid = Simulation['Nodes'][nodeid]['IncomingLinksID']
+                        pos = np.where(incominglinksid == link)[0][0]
+                        while len(signals) <= pos:
+                            signals.append(None)
+                        signals[pos] = next_signal_id                    
+                        print('Affectation du signal ', next_signal_id, ' sur le lien ', link , ' qui correspond', \
+                              ' au nodeid ',nodeid, ' en position ', pos)
+
+        
+                    next_signal_id = next_signal_id + 1
+                    # ...
                             
         if Regulation['Type'] == 'speed_limit_neovya':
             Speed = [parameter['speed'] for parameter in Regulation['Args']['Parameters']]
-            IncreaseCapacity = [parameter['speed'] for parameter in Regulation['Args']['Parameters']]
+            IncreaseCapacity = [parameter['increase_capacity'] for parameter in Regulation['Args']['Parameters']]
             Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
+            Links = Regulation['Args']['Links']
+            useless_times,Speed = addapt_vector_to_simu(begin_simu,end_simu,Times,Speed)
+            Times,IncreaseCapacity = addapt_vector_to_simu(begin_simu,end_simu,Times,Speed)
+            
             for link in Links:
-                for time,speed,increasecapacity in zip(Times,Speed,IncreaseCapacity):
-                    Actions.append({'LinkID': link,
-                        'Time': time,
+                for k,(speed,increasecapacity) in enumerate(zip(Speed,IncreaseCapacity)):
+                    if speed is None:
+                        speed = np.inf
+                    if increasecapacity is None:
+                        increasecapacity = 0
+                    Actions.append({'LinkID': link, 'Times' : [Times[k],Times[k+1]], 'Status' : 'Begin',
+                        'Time': Times[k],
                         'Type': 'speed_limit_neovya',
                         'Args': {
                             'Speed': speed,
                             'Increase_capacity' : increasecapacity
                         }
                     })  
-            # ...
-            
-        if Regulation['Type'] == 'demand_variation_path':
-            Flow = [parameter['flow'] for parameter in Regulation['Args']['Parameters']]
-            Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
-            for link in Links:
-                for time,flow in zip(Times,Flow):
-                    Actions.append({'LinkID' : link,
-                        'Time': time,
-                        'Type': 'demand_variation_path',
+                    Actions.append({'LinkID': link, 'Times' : [Times[k],Times[k+1]],'Status' : 'End',
+                        'Time': Times[k+1],
+                        'Type': 'speed_limit_neovya',
                         'Args': {
-                            'Flow': flow
+                            'Speed': speed,
+                            'Increase_capacity' : increasecapacity
                         }
-                    })   
+                    }) 
             # ...
-            
-        if Regulation['Type'] == 'demand_modulation':
-            Modulations =  [parameter['modulation'] for parameter in Regulation['Args']['Parameters']]
-            Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
-            for link in Links:
-                for time,modulation in zip(Times,Modulations):
-                    Actions.append({'LinkID' : link,
-                        'Time': time,
-                        'Type': 'demand_modulation',
-                        'Args': {
-                            'modulation': modulation
-                        }
-                    })               
-             # ... 
+             
             
         if Regulation['Type'] == 'lane_reduction' or Regulation['Type'] == 'crash' :
             remaining_lanes = Regulation['Args']['remaining_lanes']
             new_time = Regulation['Args']['Times']
             links = Regulation['Args']['Links']
             for link in links:
-                Actions.append({'LinkID' : link,
-                        'Time': new_time[0],
-                        'Type': 'lane_reduction',
-                        'Args': {
-                            'remaining_lane': remaining_lanes,
-                            'end_reduction' : new_time[1]
-                        }
-                    })     
-                Actions.append({'LinkID' : link,
-                        'Time': new_time[1],
-                        'Type': 'lane_reduction',
-                        'Args': {
-                            'remaining_lane': remaining_lanes,
-                            'begin_reduction' : new_time[0]
-                        }
-                    })
+                Actions.append({'LinkID' : link, 
+                                'Times' : new_time, 
+                                'Status' : 'Begin',
+                                'Time': new_time[0],
+                                'Type': 'lane_reduction',
+                                'Args':{'remaining_lane': remaining_lanes,                      
+                                }})     
+                Actions.append({'LinkID' : link, 
+                                'Times' : new_time, 
+                                'Status' : 'End',
+                                'Time': new_time[1],
+                                'Type': 'lane_reduction',
+                                'Args':{
+                                'remaining_lane': remaining_lanes, 
+                                }})
             # ...
                       
         if Regulation['Type'] == 'variable_free_speed':
             speed_drop_at_capacity = Regulation['Args']['speed_drop_at_capacity']
-            Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
+            Times = SimulationDuration
+            Links = list(Simulation['Links'])
             for link in Links:
-                for time,modulation in zip(Times,Modulations):
-                    Actions.append({'LinkID' : link,
-                        'Time': Times[0],
-                        'Type': 'variable_free_speed',
-                        'Args': {
-                            'speed_drop_at_capacity': speed_drop_at_capacity
-                        }
+                Actions.append({'LinkID' : link,'Times' : SimulationDuration,
+                    'Time': Times[0],
+                    'Type': 'variable_free_speed',
+                    'speed_drop_at_capacity': speed_drop_at_capacity
                     })               
             # ...
             
         if Regulation['Type'] == 'storm': 
-            Times = Regulation['Args']['Times']
-            Links = Regulation['Links']
-            for link in Links:
-                for time,modulation in zip(Times,Modulations):
-                    Actions.append({'LinkID' : link,
-                        'Time': Times[0],
-                        'Type': 'storm',
-                        'Args': Regulation['Args']
-                    })                      
-            # ...
-    
-    
+            Times = SimulationDuration
+            Actions.append({'Links' : list(Simulation['Links']),
+                'Times' : SimulationDuration,
+                'Time': Times[0],
+                'Type': 'storm',
+                'Args': Regulation['Args']
+            })                      
+            # ...    
+            
     # ...
     # Sort actions
-    Actions = sortActionsByTime(Actions)
+    if Actions != []:
+        Actions = sortActionsByTime(Actions)
     Simulation['Actions'] = Actions
     # ...
     return Simulation
@@ -445,47 +493,87 @@ def init_action_by_link(links,period):
         actions_by_links[link] = ([np.inf,np.inf],period)
     return actions_by_links
 
-def signal_to_capacity(signalcapacity):
-    
-    return(capacityforced)
+def addapt_vector_to_simu(begin,end,Times,Carac):
+    new_times = []
+    new_carac = []
+    for k in range(len(Times)):
+        if Times[k] is None:
+            Times[k] = begin
+        if Times[k] >= begin and Times[k] < end:
+            new_times.append(Times[k])
+            new_carac.append(Carac[k])
+    new_times.append(end)
+    return(new_times,new_carac)
 
-def merge_time_and_data(current_data,current_time,new_time,new_data):
-    i1,i2 = get_extremum(current_time,new_time)
-    n = len(current_time)
-    final_data = current_data[:i1]
-    final_time = current_time[:i1]
+def add_single_element_to_sorted_data(begin,end,data,list_time,list_data):
+    ''' list_time, list_data = [t0,..,tn],[d0,..,dn]  -> [t0,..,ti-1, begin, ti,..tj-1, end, tj,..,tn]'''
+    i,j = get_pos_in_list(begin,end,list_time)
+    list_time = list(list_time)
+    list_data = list(list_data)
+    new_list_time = list_time[:i]
+    new_list_data = list_data[:i]
     
-    #init
-    final_time.append(new_time[0])
-    final_data.append(min(current_data[i1],new_data))
+    #begin
+    if i < len(list_time):
+        if begin == list_time[i]:
+            new_data =  min(data,list_data[i])
+            i = i+1
+        else:
+            new_data = min(data,list_data[i-1])
+        new_list_time.append(begin)
+        new_list_data.append(new_data)    
+    #...
     
     #general case
-    for k in range(i1,i2):
-        final_data.append(min(current_data[k],new_data))
-        final_time.append(current_time[k])
+    for k in range(i,j-1):
+        new_data = min(data,list_data[k])
+        new_list_time.append(list_time[k])
+        new_list_data.append(new_data)
+        #...
     
-    final_time.append(new_time[1])
-    final_data.append(min(np.inf,current_data[i2-1]))
+    #end
+    if j < len(list_time):
+        if end == list_time[j]:
+            new_data = list_data[j]
+            j = j+1
+        else:
+            new_data = list_data[j-1]
+        new_list_time.append(end)
+        new_list_data.append(new_data)
     
-    if current_time[i2] == new_time[1]:
-        i2 = i2+1
-    #final case
-    final_time = final_time + current_time[i2:]
-    final_data = final_data + current_data[i2:]
-    return(final_data,final_time)
+    new_list_data = new_list_data + list_data[j:] 
+    new_list_time = new_list_time + list_time[j:]
+        # ...
     
-def get_extremum(v,t):
-    '''return the exact position of t[0],t[1] in ordered v'''
-    x1,x2 = t
-    i1,i2 = 0,0
-    n = len(v)
+    #delete duplicate
+    keep_index = []
+    n = len(new_list_data)
     k = 0
-    while k< n and x2 >= v[k]:
-        k = k+1
-        if v[k] < x1:
-            i1 = k
-    i2 = k
-    return(i1+1,i2)
+    p = 0
+    while k<n :
+        while p < n and new_list_data[k] == new_list_data[p]:
+            p = p +1
+        keep_index.append(k)
+        k = p
+    keep_index.append(n-1)
+    new_list_time_bis,new_list_data_bis = [],[]
+    for k in keep_index:
+        new_list_time_bis.append(new_list_time[k])
+        new_list_data_bis.append(new_list_data[k])
+    # ...
+        
+    return(new_list_time_bis,new_list_data_bis)
+ 
+def get_pos_in_list(begin,end,list_time):
+    i = 0
+    n = len(list_time)
+    while i<n and begin > list_time[i]:
+        i = i +1
+    j = i
+    while j<n and end > list_time[j]:
+        j = j+1
+    return(i,j)
+
 
 def recalculateAlphaOD(node, Links):
     node.update({"AlphaOD": np.array([])})
@@ -511,3 +599,22 @@ def sortActionsByTime(Actions):
         newActions.append(Actions[sortedIndexes[i]])
     Actions = newActions
     return Actions
+
+
+
+def makeSignalTimes(green_time, red_time, duration, startGreen=True):
+    step = green_time+red_time
+    if startGreen:
+        green_starts = np.arange(
+            start=duration[0], stop=duration[1] + step, step=green_time+red_time)
+        red_starts = np.arange(
+            start=duration[0]+green_time, stop=duration[1] + step, step=green_time+red_time)
+    else:
+        red_starts = np.arange(
+            start=duration[0], stop=duration[1] + step, step=green_time+red_time)
+        green_starts = np.arange(
+            start=duration[0]+red_time, stop=duration[1] + step, step=green_time+red_time)
+
+    red_starts = np.append(red_starts, np.inf)
+    green_starts = np.append(green_starts, np.inf)
+    return {'green_starts': green_starts, 'red_starts': red_starts}

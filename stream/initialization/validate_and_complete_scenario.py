@@ -404,10 +404,10 @@ def complete_nodes(Links, Nodes, Traffic):
 
         # (e) SignalID ---
         if not('SignalsID' in Nodes[node].keys()):
-            Node[node]['SignalsID'] = [0 for i in range(
+            Node[node]['SignalsID'] = [None for i in range(
                 Nodes[node]['NumncomingLinks'] + 1)]
         if len(Nodes[node]['SignalsID']) != Nodes[node]['NumIncomingLinks'] + 1:
-            Nodes[node]['SignalsID'].append(0)
+            Nodes[node]['SignalsID'].append(None)
 
             # (f) FIFO ---
         if not("FIFO" in Nodes[node].keys()):

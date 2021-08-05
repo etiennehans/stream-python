@@ -10,7 +10,8 @@ def main_simulation_meso(S, T, disp='time'):
 # S is the dict containing all the information about the simulation
 # nProcess is the number of the calculated process
 # T is the instant of end of the simulation
-
+    dic_action_in_progress = init_dic_action(S)
+        
     # ---- (1) Reinitialization of the event list, including the next
     if 'Signals' in S.keys():
         Signals = S['Signals']
@@ -71,10 +72,11 @@ def compute_next_action(Actions, ListActions=None, NextAction=None):
     return (ListActions, NextAction)
 
 
-def tackle_action(S, ListActions, NextAction,action_queue, end_actions, dic_action_in_progress, disp='time'):
+def tackle_action(S, ListActions, NextAction, dic_action_in_progress, disp='time'):
     # ...
     # we deals with actions
     # ...
+    NextVehID = len(list(S['Vehicles']))
     if NextAction['Type'] == 'display_time_simulation':
         if disp == 'time':
             print('Time in simulation : ' +
@@ -94,7 +96,6 @@ def tackle_action(S, ListActions, NextAction,action_queue, end_actions, dic_acti
         numLanesFirst = S['Links'][firstLinkID]["NumLanes"]
         numLanesSecond = S['Links'][secondLinkID]["NumLanes"]
         numLanesTotal = numLanesFirst + +numLanesSecond
-#
         values = []
         for i in range(len(S["VehicleClass"])):
             if i == classID:
@@ -162,123 +163,122 @@ def tackle_action(S, ListActions, NextAction,action_queue, end_actions, dic_acti
         func = NextAction['Args']['FunctionToCall']
         print(
             f"@Stream: [{NextAction['Time']}], custom regulation calling function {func.__name__}")
-        func(S)
-        
-        
-        
-    if NextAction['Type'] == 'exit_supply' :
-        concerned_link = NextAction['LinkID']
-        exit_capacity = NextAction['Args']['exit_capacity']       
-        action_in_progress = dic_action_in_progress[concerned_link]['capacity_limit']
-        if NextAction['status'] == 'Begin':
-            action_in_progress.append(NextAction)
-        else:
-            action_in_progress = delete_action_from_list(NextAction,action_in_progress)
-        
-        if action_in_progress == []:
-            S['Links'][concerned_link]['Changes']['capacity_limit'] = np.inf
-        else:
-            S['Links'][concerned_link]['Changes']['capacity_limit'] = min([action['Args']['exit_capacity'] for action in action_in_progress])
-        # ...
+        func(S)       
+         # ...
+         
     if NextAction['Type'] == 'speed_limit_neovya':
+         #speed limit en amont ou aval du lien, au choix  -> je choisi en Amont
+        #increase capacity en amont et en aval du lien.
         concerned_link = NextAction['LinkID']
-        speed, increase_capacity = NextAction['Args']['speed'],NextAction['Args']['increase_capacity']
-        
-        speed_action_in_progress = dic_action_in_progress[concerned_link]['speed_limit']
-        capacity_action_in_progress = dic_action_in_progress[concerned_link]['increase_capacity']
-        
-        if NextAction['status'] == 'Begin':
-            speed_action_in_progress.append(NextAction)
-            capacity_action_in_progress.append(NextAction)
-        else:
-            speed_action_in_progress = delete_action_from_list(NextAction,speed_action_in_progress)
-            capacity_action_in_progress = delete_action_from_list(NextAction,capacity_action_in_progress)            
+        try:
+            Link = S['Links'][concerned_link]
+        except:
+            Link = None
+            print('Link ',concerned_link, 'does not exist in the network')
+        if Link is not None:
+            nodeup,nodedown = S['Links'][concerned_link]['NodeUpID'],S['Links'][concerned_link]['NodeDownID']
+            outgoinglinksid = S['Nodes'][nodeup]['OutgoingLinksID']
+            incominglinksid = S['Nodes'][nodedown]['IncomingLinksID']
+    
+            IN = np.where(incominglinksid == concerned_link)[0][0]
+            OUT = np.where(outgoinglinksid == concerned_link)[0][0]
             
+            speed_action_in_progress = dic_action_in_progress[nodeup]['OutgoingLinksID'][OUT]['speed_limit']
             
-        if speed_action_inprogress == []:
-            S['Links'][concerned_link]['Changes']['speed_limit'] = np.inf
-        else:
-            S['Links'][concerned_link]['Changes']['speed_limit'] = min([action['Args']['speed_limit'] for action in speed_action_in_progress])
-           
-        
-        if speed_action_in_progress == []:
-            S['Links'][concerned_link]['Changes']['increase_capacity'] = 0
-        else:
-            S['Links'][concerned_link]['Changes']['increase_capacity'] = min([action['Args']['increase_capacity'] for action in capacity_action_in_progress])    
-        
-        # ...  
-        
-    if NextAction['Type'] == 'demand_variation_path':
-        concerned_link = NextAction['LinkID']
-        flow = NextAction['Args']['Flow']
-        ''' JE RAJOUTE DE NOUVEAUX VEHICULES ?    '''    
-        #... 
-        
-    if NextAction['Type'] == 'ramp_metering':
-        concerned_link = NextAction['LinkID']
-        signalcapacity = NextAction['Args']['Signal_capacity']
-        capacity_action_in_progress = dic_action_in_progress[concerned_link]['Signal_capacity']
-        if NextAction['status'] == 'Begin':
-            capacity_action_in_progress.append(NextAction)
-        else:
-            capacity_action_in_progress = delete_action_from_list(NextAction,capacity_action_in_progress)
-        ''' J'APPLIQUE CA OU ? '''                
-        if capacity_action_in_progress == []:
-            S['Links'][concerned_link]['Changes']['b'] = 0
-        else:
-            S['Links'][concerned_link]['Changes']['b'] = min([action['Args']['increase_capacity'] for action in capacity_action_in_progress])    
- 
-        # ...
-        
-    if NextAction['Type'] == 'demand_modulation':
-        concerned_link = NextAction['LinkID']
-        modulation = NextAction['Args']['modulation']
-        ''' J'APPLIQUE CA OU ? '''    
-        # ...
-        
+            capacityUp_action_in_progress = dic_action_in_progress[nodeup]['OutgoingLinksID'][OUT]['Capacity']
+            capacityDown_action_in_progress = dic_action_in_progress[nodedown]['IncomingLinksID'][IN]['Capacity']
+            
+            if NextAction['Status'] == 'Begin':
+                speed_action_in_progress.append(NextAction)
+                capacityUp_action_in_progress.append(NextAction)
+                capacityDown_action_in_progress.append(NextAction)
+            else:
+                speed_action_in_progress = delete_action_from_list(NextAction,speed_action_in_progress)
+                capacityUp_action_in_progress = delete_action_from_list(NextAction,capacityUp_action_in_progress)  
+                capacityDown_action_in_progress = delete_action_from_list(NextAction,capacityDown_action_in_progress)  
+               
+            #tackle speedlimit
+            if speed_action_in_progress == []:
+                speedlimit = np.inf
+            else:
+                speedlimits = [action['Args']['Speed'] for action in speed_action_in_progress]
+                speedlimit = min(speedlimits)
+            S['Nodes'][nodeup]['Tmp_DownSpeedLimit'][OUT] = speedlimit
+            
+            #tackle increasecapacityUp
+            if capacityUp_action_in_progress == []:
+                capacityup = None
+            else:
+                capacityup = get_capacity(S,capacityUp_action_in_progress,concerned_link)
+            S['Nodes'][nodeup]["Tmp_DownCapacity"][OUT] = capacityup
+            
+            # ...      
+            
+            #tackle increasecapacityDown      
+            if capacityDown_action_in_progress == []:
+                capacitydown = None
+            else:
+                capacitydown = get_capacity(S,capacityDown_action_in_progress,concerned_link)
+            S['Nodes'][nodedown]["Tmp_UpCapacity"][IN] = capacitydown
+             # ...
+            
     if NextAction['Type'] == 'lane_reduction':
         concerned_link = NextAction['LinkID']
-        remaining_lanes  = NextAction['Args']['remaining_lane']
+        try:
+            Link = S['Links'][concerned_link]
+        except:
+            Link = None
+            print('Link ',concerned_link, 'does not exist in the network')
+        if Link is not None:
+            nodeup,nodedown = S['Links'][concerned_link]['NodeUpID'],S['Links'][concerned_link]['NodeDownID']
+            outgoinglinksid = S['Nodes'][nodeup]['OutgoingLinksID']
+            incominglinksid = S['Nodes'][nodedown]['IncomingLinksID']
+            IN = np.where(incominglinksid == concerned_link)[0][0]
+            OUT = np.where(outgoinglinksid == concerned_link)[0][0]
+                    
+            capacityUp_action_in_progress = dic_action_in_progress[nodeup]['OutgoingLinksID'][OUT]['Capacity']
+            capacityDown_action_in_progress = dic_action_in_progress[nodedown]['IncomingLinksID'][IN]['Capacity']
+            
+            if NextAction['Status'] == 'Begin':
+                capacityUp_action_in_progress.append(NextAction)
+                capacityDown_action_in_progress.append(NextAction)
+            else:
+                capacityUp_action_in_progress = delete_action_from_list(NextAction,capacityUp_action_in_progress)  
+                capacityDown_action_in_progress = delete_action_from_list(NextAction,capacityDown_action_in_progress)  
+               
+            #tackle increasecapacityUp
+            if capacityUp_action_in_progress == []:
+                capacityup = None
+            else:
+                capacityup = get_capacity(S,capacityUp_action_in_progress,concerned_link)
+            S['Nodes'][nodeup]["Tmp_DownCapacity"][OUT] = capacityup
+            # ...      
+            
+            #tackle increasecapacityDown      
+            if capacityDown_action_in_progress == []:
+                capacitydown = None
+            else:
+                capacitydown = get_capacity(S,capacityDown_action_in_progress,concerned_link)
+            S['Nodes'][nodedown]["Tmp_UpCapacity"][IN] = capacitydown
+             # ...
 
-        capacity_action_in_progress = dic_action_in_progress[concerned_link]['capacity_factor']
-        if NextAction['status'] == 'Begin':
-            capacity_action_in_progress.append(NextAction)
-        else:
-            capacity_action_in_progress = delete_action_from_list(NextAction,capacity_action_in_progress)
-        if capacity_action_in_progress == []:
-            S['Links'][concerned_link]['Changes']['capacity_factor'] = 1
-        else:
-            S['Links'][concerned_link]['Changes']['capacity_factor'] = min([action['Args']['remaining_lane'] for action in capacity_action_in_progress])/S['Links'][concerned_link]['NumLanes']
-        # ...
-        
+      
     if NextAction['Type'] == 'variable_free_speed':
         concerned_link = NextAction['LinkID']
-        speed_drop_at_capacity  = NextAction['Args']['speed_drop_at_capacity']
+        speed_drop_at_capacity  = NextAction['speed_drop_at_capacity']
         ''' J'APPLIQUE CA OU  ? '''    
         # ...
         
     if NextAction['Type'] == 'storm':
-        
-        concerned_link = NextAction['LinkID']
-        speed_modulation = NextAction['Args']['speed_modulation']
-        wavespeed_modulation = NextAction['Args']['wavespeed_modulation'] 
-        capacity_modulation = NextAction['Args']['capacity_modulation']
-        S['Links'][concerned_link]['Ref']['speed'] = S['Links'][concerned_link]['Capacity']*capacity_modulation# ...        
-        S['Links'][concerned_link]['Ref']['Capacity'] = S['Links'][concerned_link]['speed']*speed_modulation# ...        
-        ''' QUE FAIRE DE WAVESPEED MODULATION ? '''  
+        speed_modulation = NextAction['Args']['Parameters']['speed_modulation']
+        wavespeed_modulation = NextAction['Args']['Parameters']['wavespeed_modulation'] 
+        capacity_modulation = NextAction['Args']['Parameters']['capacity_modulation']
+
+        for linkid in S['Links']:
+            S['Links'][linkid]['Ref_Capacity'] = S['Links'][linkid]['Capacity']*capacity_modulation
+            S['Links'][linkid]['Ref_Speed'] = S['Links'][linkid]['Speed']*speed_modulation
+            S['Links'][linkid]['Ref_Wavespeed'] = S['Links'][linkid]['FD']['w']*wavespeed_modulation
         #...
-    # ...
-    ''' élément non linéaire, ordre important, et on doit garder en mémoire les différentes limitation pour revenir 
-        à la dernière 'meilleur' limitation en date. 
-        
-        idée : queue d'élément "en cours de traitement", rangée dans un dictionaire par type de modification.
-                  dès qu'un élément à fini d'être traité, on prend soit la valeur de référence, soit la meilleur
-                  valeur a prendre parmis les élément encore en cours dans ce type de modification'''          
-        
-        
-        
-        
-        
         
     # ...
     ListActions, NextAction = compute_next_action(
@@ -497,7 +497,9 @@ def next_passage_time(Nodes, NodeID, NextArrivals, NextSupplyTimes, Signals):
             # if the number of signals is equal to the number of entries AND
             # if the id of the signal corresponding to the in is more than 0 AND
             # if the current passage time is less than Infinity
-            if Signals != None and 'SignalsID' in Nodes[NodeID].keys() and len(Nodes[NodeID]['SignalsID']) == NumIns and NextPassageTime[IN, out] < np.inf and Nodes[NodeID]['SignalsID'][IN] > 0:
+            if Signals != None and 'SignalsID' in Nodes[NodeID].keys() \
+            and len(Nodes[NodeID]['SignalsID']) >= IN and NextPassageTime[IN, out] < np.inf \
+            and Nodes[NodeID]['SignalsID'][IN] is not None and Nodes[NodeID]['SignalsID'][IN] in list(Signals) : 
                 PassageTime = NextPassageTime[IN, out]
                 # Identification of the number of the traffic light strategy number
                 SignalsID = Nodes[NodeID]['SignalsID'][IN]
@@ -570,11 +572,8 @@ def select_next_event(Nodes, NodeID, General, NextArrivals, NextPassageTime, Nex
 # =============================================================================
 # Function to modify the simulation database depending on the next event
 # =============================================================================
-
-
-def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClass, Events, NextEvents):
-
-    # ---- (0) Initialisation
+def execute_and_update_event_bis(Links, Exits, Nodes, General, Vehicles, VehicleClass, Events, NextEvents): 
+    # ---- (0) Initialisation 
     NodeID = NextEvents["Node"]
     current_time = NextEvents["Time"]
     out = NextEvents["NextLink"]
@@ -610,14 +609,13 @@ def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClas
             if len(f) > 0:
                 f = f[-1]
                 h_down = 1 / Exits[ExitID]["Supply"]["Data"][f]
-        else:
+        else:  # sortie d'un noeud interne (trançon pas défini)
             h_down = 0
-    else:
+    else: #traitement des noeuds internes 
         # If NodeID is an entry node or an internal node : the capacity
         # depends on the capacity of the downstream link
-        '''Capacity = (1 - Nodes[NodeID]["CapacityDrop"][IN]) * \
-            Links[Nodes[NodeID]["OutgoingLinksID"][out]]["Capacity"]'''
-        Capacity = ()
+        Capacity = (1 - Nodes[NodeID]["CapacityDrop"][IN]) * \
+            Links[Nodes[NodeID]["OutgoingLinksID"][out]]["Capacity"]
         h_down = 1/Capacity
         # s'il y a une valeur de Capacity Forced indique au noeud, alors elle s'applique
         if Nodes[NodeID]["CapacityForced"] < np.inf:
@@ -742,3 +740,252 @@ def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClas
         NodeUpID = []
         Event_NodeUpID = []
     return Event_NodeID, NodeID, Event_NodeDownID, NodeDownID, Event_NodeUpID, NodeUpID
+
+
+def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClass, Events, NextEvents):
+
+    # ---- (0) Initialisation
+    NodeID = NextEvents["Node"]
+    current_time = NextEvents["Time"]
+    out = NextEvents["NextLink"]
+    IN = NextEvents["PreviousLink"]
+    veh = NextEvents["VehID"]
+    Event_NodeID = Events[NodeID]
+    
+    '''           
+    linkOUT = Nodes[NodeID]["OutgoingLinksID"][out]
+    linkIN = Nodes[NodeID]["IncomingLinksID"][IN]
+    '''
+    
+    # ---- (1) Recording the current event
+    # Record of the passage time in the varaible 'Exits' at the current node
+    n = Event_NodeID["Exits"][out]["Num"] + 1
+    Event_NodeID["Exits"][out]["Num"] = n
+    Event_NodeID["Exits"][out]["VehID"] = np.concatenate(
+        (Event_NodeID["Exits"][out]["VehID"], np.array([veh])))
+    Event_NodeID["Exits"][out]["Time"] = np.concatenate(
+        (Event_NodeID["Exits"][out]["Time"], np.array([current_time])))
+    Event_NodeID["Exits"][out]["Regime"] = np.concatenate(
+        (Event_NodeID["Exits"][out]["Regime"], np.array([NextEvents["Regime"]])))
+    Event_NodeID["Exits"][out]["PreviousLinkID"] = np.concatenate(
+        (Event_NodeID["Exits"][out]["PreviousLinkID"], np.array([IN])))
+    # ---
+    in_veh = np.where(Event_NodeID["Arrivals"][IN]["VehID"] == veh)[0]
+    Event_NodeID["Arrivals"][IN]["IsExit"][in_veh] = True
+
+    # ---- (2) New exit contraint at the current node
+    # --- next time due to capacity downstream
+    if out >= Nodes[NodeID]["NumOutgoingLinks"]:
+        if Nodes[NodeID]["NumOutgoingLinks"] == 0:
+            # Si le noeud est un noeud de sortie : la capacité est forcée pour la sortie
+            h_down = 0
+            ExitID = NodeID
+            # Si une mise à jour de la capacité est nécessaire
+            f = np.where(Exits[ExitID]["Supply"]["Time"] < current_time)[0]
+            if len(f) > 0:
+                f = f[-1]
+                h_down = 1 / Exits[ExitID]["Supply"]["Data"][f]
+        else:
+            h_down = 0
+    else:
+        # If NodeID is an entry node or an internal node : the capacity
+        # depends on the capacity of the downstream link
+        Capacity = (1 - Nodes[NodeID]["CapacityDrop"][IN]) * \
+            Links[Nodes[NodeID]["OutgoingLinksID"][out]]["Ref_Capacity"]
+            
+        ''' On récupère la capacité temporaire de sortie du noeud, pour le lien de sortie. On prend ensuite le minimum des deux capacités '''
+        Capacity = min(Capacity, Nodes[NodeID]["Tmp_DownCapacity"][out])
+        
+        h_down = 1/Capacity
+        # s'il y a une valeur de Capacity Forced indique au noeud, alors elle s'applique
+        if Nodes[NodeID]["CapacityForced"] < np.inf:
+            h_down = 1/Nodes[NodeID]["CapacityForced"]
+    h_down = h_down * General["Peloton"]
+    Event_NodeID["SupplyTimes"]["DownCapacity"][out] = current_time + h_down
+
+
+    # --- next time due to capacity upstream
+    if IN > Nodes[NodeID]["NumIncomingLinks"] - 1:
+        # Si NodeID est un noeud d'entrée
+        h_up = 0
+    else:
+        Capacity = Links[Nodes[NodeID]["IncomingLinksID"][IN]]["Ref_Capacity"]
+        tmp_capacity =  Nodes[NodeID]["Tmp_UpCapacity"][IN]
+        Capacity = min(Capacity,tmp_capacity)
+        h_up = 1 / Capacity
+
+    h_up = h_up * General["Peloton"]
+    Event_NodeID["SupplyTimes"]["UpCapacity"][IN] = current_time + h_up
+
+    # --- future constraint for the vehicle "veh+dn" at the node
+    if out < Nodes[NodeID]["NumOutgoingLinks"]:
+        # there is a downstream link: this vehicle "veh" is a constraint for
+        # vehicle "veh + dn" at the current node, until it leaves the link
+        # ID of the incoming link
+        LinkDownUpID = Nodes[NodeID]["OutgoingLinksID"][out]
+        # --- calculation of the next supply yime at the current node
+        dn = Links[LinkDownUpID]["Length"] * \
+            Links[LinkDownUpID]["NumLanes"] * Links[LinkDownUpID]["FD"]["kx"]
+        if (dn / General["Peloton"]) != np.floor(dn / General["Peloton"]):
+            dn = int(dn / General["Peloton"]) + 1
+        else:
+            dn = int(dn / General["Peloton"])
+
+        sp = Event_NodeID["SupplyTimes"]["Downstream"].shape
+        if n + dn >= sp[0]:
+            nbLinesToAdd = n + dn - sp[0] + 1
+            Event_NodeID["SupplyTimes"]["Downstream"] = np.vstack(
+                (Event_NodeID["SupplyTimes"]["Downstream"], -np.inf * np.ones((nbLinesToAdd, sp[1]))))
+
+        Event_NodeID["SupplyTimes"]["Downstream"][n + dn, out] = np.inf
+
+    # ---- (3) Arrival Computation at the next node
+    # Update of the 'Arrivals' at the node Downstream
+    # The vehicles are added to the list of the arrival at the node downstream
+    # Ajout du véhicule dans la liste des arrivés au noeud en aval
+    if Nodes[NodeID]["NumOutgoingLinks"] > 0 and Nodes[NodeID]["NumOutgoingLinks"] >= out:
+        # this is an internal node
+        # -- transit time at the previous node
+        transit_time = Nodes[NodeID]["TransitTime"]
+        # -- Searching time at the previous node
+        LinkID = Nodes[NodeID]["OutgoingLinksID"][out]
+        NodeDownID = Links[LinkID]["NodeDownID"]
+        Event_NodeDownID = Events[NodeDownID]
+        indown = np.where(Nodes[NodeDownID]["IncomingLinksID"] == LinkID)[0][0]
+
+        n_down = Event_NodeDownID["Arrivals"][indown]["Num"] + 1
+        Event_NodeDownID["Arrivals"][indown]["Num"] = n_down
+        if False:
+            classID = Vehicles[veh]["VehClassID"]
+            VehicleSpeed = VehicleClass[classID]["Ref_Speed"]
+            speed_limit = Nodes[NodeID]['Tmp_DownSpeedLimit'][out]
+            VehicleSpeed = min(VehicleSpeed, Links[LinkID]["FD"]["u"],speed_limit)
+        else:
+            speed_limit = Nodes[NodeID]['Tmp_DownSpeedLimit'][out]
+            VehicleSpeed = Links[LinkID]["Ref_Speed"]
+            VehicleSpeed = min(VehicleSpeed,speed_limit)
+
+        # Recording information
+        # Adding in the events of the downstream node
+        Event_NodeDownID["Arrivals"][indown]["VehID"] = np.concatenate(
+            (Event_NodeDownID["Arrivals"][indown]["VehID"], np.array([veh])))
+        Event_NodeDownID["Arrivals"][indown]["IsExit"] = np.concatenate(
+            (Event_NodeDownID["Arrivals"][indown]["IsExit"], np.array([0])))
+        # Event_NodeDownID["Arrivals"][indown]["NextLinkID"] = np.concatenate((Event_NodeDownID["Arrivals"][indown]["NextLinkID"], np.array([0])))
+        CurrentNodePath = Vehicles[veh]["CurrentNode"] + 2
+        if CurrentNodePath < len(Vehicles[veh]["Path"]):
+            NextLinkID = Vehicles[veh]["Path"][CurrentNodePath]
+            # Manage the reserved lanes
+            if Links[NextLinkID]["AssociatedLink"] != None:
+                probVect = Links[NextLinkID]["LaneProbabilities"][int(
+                    Vehicles[veh]["VehicleClass"])]
+                rng = random.random()
+                if rng > probVect[0]:
+                    #                    print("Vehicle  " + str(veh) + " as " + VehicleClass[int(Vehicles[veh]["VehicleClass"])]["Name"] + " had probability " + str(probVect[0]) + " to take principal link and has got " + str(rng) + " so he goes to the alternate...")
+                    NextLinkID = Links[NextLinkID]["AssociatedLink"]
+#                else:
+#                    print("Vehicle  " + str(veh) + " as " + VehicleClass[int(Vehicles[veh]["VehicleClass"])]["Name"] + " had probability " + str(probVect[0]) + " to take principal link and has got " + str(rng) + " so he goes to the principal...")
+            _outid = np.where(
+                Nodes[NodeDownID]["OutgoingLinksID"] == NextLinkID)[0][0]
+            Event_NodeDownID["Arrivals"][indown]["NextLinkID"] = np.concatenate(
+                (Event_NodeDownID["Arrivals"][indown]["NextLinkID"], np.array([_outid])))
+        else:
+            Event_NodeDownID["Arrivals"][indown]["NextLinkID"] = np.concatenate(
+                (Event_NodeDownID["Arrivals"][indown]["NextLinkID"], np.array([Nodes[NodeDownID]["NumOutgoingLinks"]])))
+
+        _dTime = current_time + transit_time + \
+            Links[LinkID]["Length"] / VehicleSpeed
+        Event_NodeDownID["Arrivals"][indown]["Time"] = np.concatenate(
+            (Event_NodeDownID["Arrivals"][indown]["Time"], np.array([_dTime])))
+    else:
+        NodeDownID = []
+        Event_NodeDownID = []
+
+    # ---- (4) new constraints upstream
+    # Update of the "supply times downstream" of the node upstream
+    if Nodes[NodeID]["NumIncomingLinks"] > 0 and IN <= Nodes[NodeID]["NumIncomingLinks"]:
+        # this is an internal node
+        # --- searching the node and the link upstream
+        LinkUpID = Nodes[NodeID]["IncomingLinksID"][IN]
+        NodeUpID = Links[LinkUpID]["NodeUpID"]
+        j = np.where(Nodes[NodeUpID]["OutgoingLinksID"] == LinkUpID)[0]
+        n = np.where(Events[NodeID]["Arrivals"][IN]["VehID"] == veh)[0]
+        # Calculation of the next supply time downstream
+        dn = Links[LinkUpID]["Length"] * \
+            Links[LinkUpID]["NumLanes"] * Links[LinkUpID]["FD"]["kx"]
+        if (dn / General["Peloton"]) != np.floor(dn / General["Peloton"]):
+            dn_exact = int(dn / General["Peloton"]) + 1
+        else:
+            dn_exact = int(dn / General["Peloton"])
+        dt = Links[LinkUpID]["Length"] / Links[LinkUpID]['Ref_Wavespeed']
+        dt_exact = dt + \
+            (dn_exact*General["Peloton"]-dn) * (1*Links[LinkUpID]["FD"]["C"])
+        Event_NodeUpID = Events[NodeUpID]
+        Event_NodeUpID["SupplyTimes"]["Downstream"][n +
+                                                    dn_exact, j] = current_time + dt_exact
+    else:
+        NodeUpID = []
+        Event_NodeUpID = []
+    return Event_NodeID, NodeID, Event_NodeDownID, NodeDownID, Event_NodeUpID, NodeUpID
+# =============================================================================
+# Sub function
+# =============================================================================
+def init_dic_action(S):
+    dic_action_in_progress = {}
+    for nodeid in S['Nodes']:
+        NumIn,NumOut = len(S['Nodes'][nodeid]['IncomingLinksID']),len(S['Nodes'][nodeid]['OutgoingLinksID'])
+        dic_action_in_progress[nodeid] = {'IncomingLinksID' : {},'OutgoingLinksID': {}}
+        for k in range(NumIn):
+            dic_action_in_progress[nodeid]['IncomingLinksID'][k] = {'Capacity' : [], 'speed_limit' : []}
+        for k in range(NumOut):
+            dic_action_in_progress[nodeid]['OutgoingLinksID'][k] = {'Capacity' : [], 'speed_limit' : []}            
+    return(dic_action_in_progress)
+
+def get_capacity(S,actions,link):
+    #sort capacity action by "type"
+    dic_capacity = sort_capacity(actions)
+    
+    #Either there is juste "speed limit" as action 
+    if dic_capacity['additional_factor'] != [] and ( dic_capacity['lane_reduction'] == [] and dic_capacity['substraction_factor'] == [] ):
+        C_ref = S['Links'][link]['Ref_Capacity']
+        additional = dic_capacity['additional_factor']
+        add = max(additional)
+        capacity = (1+add)*C_ref
+        
+        return(capacity)
+    
+    # Or we doesn't consider "speed_limit"
+    else:
+        lane_reductions = dic_capacity['lane_reduction']
+        if lane_reductions != []:
+            multiplication = min(lane_reductions)/S['Links'][link]['NumLanes']
+        else:
+            multiplication = 1
+        C_ref = S['Links'][link]['Ref_Capacity'] * multiplication
+        
+        substraction_factor = dic_capacity['substraction_factor']
+        if substraction_factor != []:
+            sub = min(substraction_factor)
+        else:
+            sub = 1
+        sub = C_ref - sub*C_ref    
+        
+        capacity = C_ref - sub
+        return(capacity)
+    
+def sort_capacity(actions):
+    dic_capacity = {'lane_reduction': [], 'additional_factor': [], 'substraction_factor': []}
+    for action in actions:
+        if action['Type'] == 'lane_reduction':
+            dic_capacity['lane_reduction'].append(action['Args']['remaining_lane'])
+        if action['Type'] == 'speed_limit' :
+            dic_capacity['additional_factor'].append(action['Args']['Increase_capacity'])
+    return(dic_capacity)
+
+    
+def delete_action_from_list(action,actions):
+    for k,action_i in enumerate(actions):
+        if action['Times'] == action_i['Times'] and action['Args'] == action_i['Args']:
+            actions.pop(k)
+            return(actions)
+    return('Try to delete action which does not exists in dict')
