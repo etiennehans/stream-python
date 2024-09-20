@@ -1,6 +1,8 @@
 # IMPORTS
 import copy
 import numpy as np
+import warnings
+from bisect import bisect
 
 from .validate_and_complete_scenario import update_link_DF
 
@@ -116,7 +118,7 @@ def complete_general(General):
 
 
 def initialize_regulations(Simulation):
-    '''account for regulations and modify Simulation dictioaries'''
+    '''account for regulations and modify Simulation dictionaries'''
     # ...
     for reg in list(Simulation["Regulations"]):
         Regulation = Simulation["Regulations"][reg]
@@ -213,9 +215,10 @@ def initialize_actions(Simulation):
         Action['Args'] = {}
         Simulation['Actions'].append(Action)
     # ...
-    # Managed lanes
+    # Add actions from Regulations
     for reg in list(Simulation["Regulations"]):
         Regulation = Simulation["Regulations"][reg]
+        # Managed lanes
         if Regulation['Type'] == 'managed_lane':
             for managedLaneLink in Regulation['Args']['Links']:
                 activated = False
@@ -232,6 +235,103 @@ def initialize_actions(Simulation):
                     Action['Args'] = {
                         'LinkID': managedLaneLink, 'Class': Regulation['Args']['Class'], 'Display': True}
                     Simulation['Actions'].append(Action)
+        
+        #...
+        if Regulation['Type'] in ['speed_limit', 'speed_limit_neovya']:
+            for link in Regulation['Args']['Links']:
+                for i, time in enumerate(Regulation['Args']['Times']):
+                    Action = {}
+                    Action['Time'] = time if not time is None else 0
+
+                    speed = Regulation['Args']['Parameters'][i]['speed']
+                    capacity = Simulation['Links'][link]['Capacity'] * (1 + Regulation['Args']['Parameters'][i]['increase_capacity'])
+
+                    Action['Type'] = 'speed_limit'
+                    Action['Args'] = {
+                        'LinkID': link, 'Speed': speed, 'Capacity': capacity, 'Display': True}
+                    Simulation['Actions'].append(Action)
+        #...
+        if Regulation['Type'] == 'ramp_metering':
+            for link in Regulation['Args']['Links']:
+                for i, time in enumerate(Regulation['Args']['Times']):
+                    Action = {}
+                    Action['Time'] = time if not time is None else 0
+
+                    signal_capacity = Regulation['Args']['Parameters'][i]['signal_capacity']
+
+                    Action['Type'] = 'ramp_metering'
+                    Action['Args'] = {
+                        'LinkID': link, 'signal_capacity': signal_capacity, 'Display': True}
+                    Simulation['Actions'].append(Action)
+
+        #...
+        if Regulation['Type'] in ['lane_reduction', 'crash']:
+            for link in Regulation['Args']['Links']:
+                # Add action for starting lane reduction
+                Action = {}
+                Action['Time'] = Regulation['Args']['Times'][0]
+
+                update_nb_lanes = Regulation['Args']['remaining_lanes']
+
+                Action['Type'] = Regulation['Type']
+                Action['Args'] = {
+                    'LinkID': link, 'update_nb_lanes': update_nb_lanes, 'Display': True}
+                Simulation['Actions'].append(Action)
+
+                # Add action for ending lane reduction
+                Action = {}
+                Action['Time'] = Regulation['Args']['Times'][1]
+
+                Action['Type'] = Regulation['Type']
+                Action['Args'] = {
+                    'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Display': True}
+                Simulation['Actions'].append(Action)
+
+        #...
+        if Regulation['Type'] == 'new_lane':
+            for link in Regulation['Args']['Links']:
+                # Add action for starting lane addaition
+                Action = {}
+                Action['Time'] = Regulation['Args']['Times'][0]
+
+                update_nb_lanes = Simulation['Links'][link]['NumLanes'] + Regulation['Args']['Parameters']['additional_lanes']
+
+                Action['Type'] = Regulation['Type']
+                Action['Args'] = {
+                    'LinkID': link, 'update_nb_lanes': update_nb_lanes, 'Display': True}
+                Simulation['Actions'].append(Action)
+
+                # Add action for ending lane addition
+                Action = {}
+                Action['Time'] = Regulation['Args']['Times'][1]
+
+                Action['Type'] = Regulation['Type']
+                Action['Args'] = {
+                    'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Display': True}
+                Simulation['Actions'].append(Action)
+
+        #...
+        if Regulation['Type'] == 'exit_supply':
+            for link in Regulation['Args']['Links']:
+                considered_exit = Simulation['Links'][link]['NodeDownID']
+                if considered_exit in Simulation['Exits'].keys():   #If NodeDown for the selected link is indeed an exit link. Otherwise send a warning
+                    for i, time in enumerate(Regulation['Args']['Times']):
+                        
+                        exit_capacity = Regulation['Args']['Parameters'][i]['exit_capacity']
+
+                        supply_times = Simulation['Exits'][considered_exit]['Supply']['Time']
+                        supply_data = Simulation['Exits'][considered_exit]['Supply']['Data']
+
+                        i = bisect(supply_times, time)
+                        supply_times.insert(i, time)
+                        supply_data = np.insert(supply_data, i, exit_capacity)
+
+                        Simulation['Exits'][considered_exit]['Supply']['Time'] = supply_times
+                        Simulation['Exits'][considered_exit]['Supply']['Data'] = supply_data
+                        
+                else:
+                    warnings.warn(f"Link {link} is not an exit link. Cannot apply exit_supply on it.")
+
     # ...
     # Sort actions
     Simulation['Actions'] = sortActionsByTime(Simulation["Actions"])

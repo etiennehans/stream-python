@@ -1,6 +1,6 @@
 import numpy as np
 import random
-
+import warnings
 
 def main_simulation_meso(S, T, disp='time'):
     print("Original simulation loop...")
@@ -133,6 +133,98 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
             print(values)
             print("----------------------")
         S["Links"][firstLinkID]["LaneProbabilities"] = values
+    
+    # ...
+    if NextAction['Type'] == 'speed_limit':
+        Args = NextAction['Args']
+        concerned_link = Args['LinkID']
+        # ...
+        # Keep track of changes
+        if 'Changes' not in S['Links'][concerned_link]:
+            S['Links'][concerned_link]['Changes'] = {
+                'Speed' : {'Times' : [], 'Values' : []},
+                'Capacity' : {'Times' : [], 'Values' : []}
+            }
+        S['Links'][concerned_link]['Speed'] = Args['Speed']
+        S['Links'][concerned_link]['Capacity'] = Args['Capacity']
+        S['Links'][concerned_link]['Changes']['Speed']['Times'].append(NextAction['Time'])
+        S['Links'][concerned_link]['Changes']['Capacity']['Times'].append(NextAction['Time'])
+        S['Links'][concerned_link]['Changes']['Speed']['Values'].append(Args['Speed'])
+        S['Links'][concerned_link]['Changes']['Capacity']['Values'].append(Args['Capacity'])
+        # ...
+        if NextAction['Args']['Display']:
+            print(
+                f"@Stream[{NextAction['Time']}] : adaptating the speed for link {concerned_link} : Speed {Args['Speed']} and Capacity {Args['Capacity']}")
+            
+    # ...
+    if NextAction['Type'] == 'ramp_metering':
+        # ...
+        Args = NextAction['Args']
+        concerned_link = Args['LinkID']
+        concerned_node = S['Links'][concerned_link]['NodeDownID']
+        # Keep track of changes
+        if 'Changes' not in S['Nodes'][concerned_node]:
+            S['Nodes'][concerned_node]['Changes'] = {
+                'CapacityForced' : {'Times' : [], 'Values' : []}
+            }
+        
+        #Modify node CapacityForced
+        S['Nodes'][concerned_node]['CapacityForced'] = Args['signal_capacity']
+
+        #Save changes
+        S['Nodes'][concerned_node]['Changes']['CapacityForced']['Times'].append(NextAction['Time'])
+        S['Nodes'][concerned_node]['Changes']['CapacityForced']['Values'].append(Args['signal_capacity'])
+        # ...
+        if NextAction['Args']['Display']:
+            print(
+                f"@Stream[{NextAction['Time']}] : adaptating the outgoing capacity for link {concerned_link} : Capacity {Args['signal_capacity']}")
+    
+    # ...
+    if NextAction['Type'] in ['lane_reduction', 'crash', 'new_lane']:
+        Args = NextAction['Args']
+        concerned_link = Args['LinkID']
+        # ...
+        # Keep track of changes
+        if 'Changes' not in S['Links'][concerned_link]:
+            S['Links'][concerned_link]['Changes'] = {
+                'Capacity' : {'Times' : [], 'Values' : []},
+                'FD -> kx' : {'Times' : [], 'Values' : []},
+                'NumLanes' : {'Times' : [], 'Values' : []}
+            }
+        
+        # Apply changes
+        Ratio = Args['update_nb_lanes'] / S['Links'][concerned_link]['NumLanes']
+
+        new_Capacity = S['Links'][concerned_link]['Capacity'] * Ratio
+        new_NumLanes = S['Links'][concerned_link]['NumLanes'] * Ratio
+        new_kx = S['Links'][concerned_link]['FD']['kx'] * Ratio
+
+        S['Links'][concerned_link]['Capacity'] = new_Capacity
+        S['Links'][concerned_link]['NumLanes'] = new_NumLanes
+        S['Links'][concerned_link]['FD']['kx'] = new_kx
+
+        # Save changes
+        S['Links'][concerned_link]['Changes']['Capacity']['Times'].append(NextAction['Time'])
+        S['Links'][concerned_link]['Changes']['FD -> kx']['Times'].append(NextAction['Time'])
+        S['Links'][concerned_link]['Changes']['NumLanes']['Times'].append(NextAction['Time'])
+        S['Links'][concerned_link]['Changes']['Capacity']['Times'].append(new_Capacity)
+        S['Links'][concerned_link]['Changes']['FD -> kx']['Times'].append(new_NumLanes)
+        S['Links'][concerned_link]['Changes']['NumLanes']['Times'].append(new_kx)
+        # ...
+        if NextAction['Args']['Display']:
+            print(
+                f"@Stream[{NextAction['Time']}] : adaptating the number of lane for link {concerned_link} : Capacity {new_Capacity}, NumLanes {new_NumLanes} and kx {new_kx}")
+
+    # ...
+    if NextAction['Type'] == 'reset_link':
+        pass
+
+    # ...
+    if NextAction['Type'] == 'custom':
+        func = NextAction['Args']['FunctionToCall']
+        print(
+            f"@Stream: [{NextAction['Time']}], custom regulation calling function {func.__name__}")
+        func(S)
 
     # ...
     ListActions, NextAction = compute_next_action(
@@ -436,7 +528,7 @@ def execute_and_update_event(Links, Exits, Nodes, General, Vehicles, VehicleClas
     Event_NodeID = Events[NodeID]
 
     # ---- (1) Recording the current event
-    # Record of the passage time in the varaible 'Exits' at the current node
+    # Record of the passage time in the variable 'Exits' at the current node
     n = Event_NodeID["Exits"][out]["Num"] + 1
     Event_NodeID["Exits"][out]["Num"] = n
     Event_NodeID["Exits"][out]["VehID"] = np.concatenate(
