@@ -46,6 +46,17 @@ def main_simulation_meso(S, T, disp='time'):
 # --------------------- Sub-functions of action computation -------------------
 # =============================================================================
 
+def initialize_Changes(S, link, required_keys, ntw_element = 'Links'):
+
+    if 'Changes' not in S[ntw_element][link]:   #If 'Changes' does not exist for the considered link -> Create it and initialized requiered keys
+        S[ntw_element][link]['Changes'] = {required_key : {'Times' : [], 'Values' : []} for required_key in required_keys}
+        
+    else: # If 'Changes' already extists -> Add the requiered keys
+        for required_key in required_keys:
+            if required_key not in S[ntw_element][link]['Changes'].keys():
+                S[ntw_element][link]['Changes'] = {**S[ntw_element][link]['Changes'], **{required_key : {'Times' : [], 'Values' : []}}}
+
+    return S
 
 def compute_next_action(Actions, ListActions=None, NextAction=None):
     # ...
@@ -140,11 +151,9 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
         concerned_link = Args['LinkID']
         # ...
         # Keep track of changes
-        if 'Changes' not in S['Links'][concerned_link]:
-            S['Links'][concerned_link]['Changes'] = {
-                'Speed' : {'Times' : [], 'Values' : []},
-                'Capacity' : {'Times' : [], 'Values' : []}
-            }
+        required_keys = ['Speed', 'Capacity']
+        S = initialize_Changes(S, concerned_link, required_keys)
+  
         S['Links'][concerned_link]['Speed'] = Args['Speed']
         S['Links'][concerned_link]['Capacity'] = Args['Capacity']
         S['Links'][concerned_link]['Changes']['Speed']['Times'].append(NextAction['Time'])
@@ -163,10 +172,8 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
         concerned_link = Args['LinkID']
         concerned_node = S['Links'][concerned_link]['NodeDownID']
         # Keep track of changes
-        if 'Changes' not in S['Nodes'][concerned_node]:
-            S['Nodes'][concerned_node]['Changes'] = {
-                'CapacityForced' : {'Times' : [], 'Values' : []}
-            }
+        required_keys = ['CapacityForced']
+        S = initialize_Changes(S, concerned_node, required_keys, ntw_element = 'Nodes')
         
         #Modify node CapacityForced
         S['Nodes'][concerned_node]['CapacityForced'] = Args['signal_capacity']
@@ -185,13 +192,9 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
         concerned_link = Args['LinkID']
         # ...
         # Keep track of changes
-        if 'Changes' not in S['Links'][concerned_link]:
-            S['Links'][concerned_link]['Changes'] = {
-                'Capacity' : {'Times' : [], 'Values' : []},
-                'FD -> kx' : {'Times' : [], 'Values' : []},
-                'NumLanes' : {'Times' : [], 'Values' : []}
-            }
-        
+        required_keys = ['Capacity', 'FD -> kx', 'NumLanes']
+        S = initialize_Changes(S, concerned_link, required_keys)
+
         # Apply changes
         Ratio = Args['update_nb_lanes'] / S['Links'][concerned_link]['NumLanes']
 
@@ -216,9 +219,41 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
                 f"@Stream[{NextAction['Time']}] : adaptating the number of lane for link {concerned_link} : Capacity {new_Capacity}, NumLanes {new_NumLanes} and kx {new_kx}")
 
     # ...
+    if NextAction['Type'] == 'storm':
+        Args = NextAction['Args']
+        concerned_link = Args['LinkID']
+
+        if concerned_link != 'All':
+            warnings.warn('Storm on a selection of links is not implemented yet. Storm is apply on all links')
+            concerned_link = 'All'
+        
+        for link in S['Links']: #For all network links
+            # Keep track of changes
+            required_keys = ['Capacity', 'Speed', 'FD -> w']
+            S = initialize_Changes(S, link, required_keys)
+
+            # Apply changes            
+            S['Links'][link]['Capacity'] *= Args['capacity_modulation']
+            S['Links'][link]['Speed'] *= Args['speed_modulation']
+            S['Links'][link]['FD']['w'] *= Args['wavespeed_modulation']
+
+            # Save changes
+            S['Links'][link]['Changes']['Capacity']['Times'].append(NextAction['Time'])
+            S['Links'][link]['Changes']['Speed']['Times'].append(NextAction['Time'])
+            S['Links'][link]['Changes']['FD -> w']['Times'].append(NextAction['Time'])
+            S['Links'][link]['Changes']['Capacity']['Times'].append(S['Links'][link]['Capacity'])
+            S['Links'][link]['Changes']['Speed']['Times'].append(S['Links'][link]['Speed'])
+            S['Links'][link]['Changes']['FD -> w']['Times'].append(S['Links'][link]['FD']['w'])
+        
+        # ...
+        if NextAction['Args']['Display']:
+            print(
+                f"@Stream[{NextAction['Time']}] : Apply storm on entire network : Capacity modulation {Args['capacity_modulation']}, speed modulation {Args['speed_modulation']} and w modulation {Args['wavespeed_modulation']}")
+
+    # ...
     if NextAction['Type'] == 'reset_link':
         pass
-
+    
     # ...
     if NextAction['Type'] == 'custom':
         func = NextAction['Args']['FunctionToCall']

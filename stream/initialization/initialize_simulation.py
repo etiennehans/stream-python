@@ -290,11 +290,11 @@ def initialize_actions(Simulation):
         #...
         if Regulation['Type'] == 'new_lane':
             for link in Regulation['Args']['Links']:
-                # Add action for starting lane addaition
+                # Add action for starting lane addition
                 Action = {}
                 Action['Time'] = Regulation['Args']['Times'][0]
 
-                update_nb_lanes = Simulation['Links'][link]['NumLanes'] + Regulation['Args']['Parameters']['additional_lanes']
+                update_nb_lanes = Simulation['Links'][link]['NumLanes'] + Regulation['Args']['additional_lanes']
 
                 Action['Type'] = Regulation['Type']
                 Action['Args'] = {
@@ -312,6 +312,7 @@ def initialize_actions(Simulation):
 
         #...
         if Regulation['Type'] == 'exit_supply':
+            #Changes are performed in Simulation['Exits'][ExitID]['Supply'] and not as a modification of link properties
             for link in Regulation['Args']['Links']:
                 considered_exit = Simulation['Links'][link]['NodeDownID']
                 if considered_exit in Simulation['Exits'].keys():   #If NodeDown for the selected link is indeed an exit link. Otherwise send a warning
@@ -331,6 +332,36 @@ def initialize_actions(Simulation):
                         
                 else:
                     warnings.warn(f"Link {link} is not an exit link. Cannot apply exit_supply on it.")
+
+        #...
+        if Regulation['Type'] == 'storm':
+            # Add action for starting the storm (one action for the entire network)
+            Action = {}
+            Action['Time'] = Simulation['General']['SimulationDuration'][0]
+
+            speed_modulation = Regulation['Args']['Parameters']['speed_modulation']
+            wavespeed_modulation = Regulation['Args']['Parameters']['wavespeed_modulation']
+            capacity_modulation = Regulation['Args']['Parameters']['capacity_modulation']
+
+            Action['Type'] = Regulation['Type']
+            Action['Args'] = {
+                'LinkID': 'All', 'speed_modulation': speed_modulation, 'wavespeed_modulation': wavespeed_modulation,
+                'capacity_modulation': capacity_modulation, 'Display': True}
+            Simulation['Actions'].append(Action)
+
+            # Add action for ending the storm (one action for the entire network)
+            Action = {}
+            Action['Time'] = Simulation['General']['SimulationDuration'][1]
+
+            speed_modulation = 1/Regulation['Args']['Parameters']['speed_modulation']
+            wavespeed_modulation = 1/Regulation['Args']['Parameters']['wavespeed_modulation']
+            capacity_modulation = 1/Regulation['Args']['Parameters']['capacity_modulation']
+
+            Action['Type'] = Regulation['Type']
+            Action['Args'] = {
+                'LinkID': 'All', 'speed_modulation': speed_modulation, 'wavespeed_modulation': wavespeed_modulation,
+                'capacity_modulation': capacity_modulation, 'Display': True}
+            Simulation['Actions'].append(Action)
 
     # ...
     # Sort actions
