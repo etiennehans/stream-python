@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import warnings
+import logging
 
 def main_simulation_meso(S, T, disp='time'):
     print("Original simulation loop...")
@@ -192,64 +193,33 @@ def tackle_action(S, ListActions, NextAction, disp='time'):
         concerned_link = Args['LinkID']
         # ...
         # Keep track of changes
-        required_keys = ['Capacity', 'FD -> kx', 'NumLanes']
+        required_keys = ['Capacity', 'NumLanes'] #['Capacity', 'FD -> kx', 'NumLanes']
         S = initialize_Changes(S, concerned_link, required_keys)
 
         # Apply changes
-        Ratio = Args['update_nb_lanes'] / S['Links'][concerned_link]['NumLanes']
+        # Ratio = Args['update_nb_lanes'] / S['Links'][concerned_link]['NumLanes']
+        Ratio = Args['Ratio']
 
         new_Capacity = S['Links'][concerned_link]['Capacity'] * Ratio
-        new_NumLanes = S['Links'][concerned_link]['NumLanes'] * Ratio
-        new_kx = S['Links'][concerned_link]['FD']['kx'] * Ratio
+        new_NumLanes = Args['update_nb_lanes']
+        # new_kx = S['Links'][concerned_link]['FD']['kx'] * Ratio
 
         S['Links'][concerned_link]['Capacity'] = new_Capacity
-        S['Links'][concerned_link]['NumLanes'] = new_NumLanes
-        S['Links'][concerned_link]['FD']['kx'] = new_kx
+        # S['Links'][concerned_link]['NumLanes'] = new_NumLanes
+        # S['Links'][concerned_link]['FD']['kx'] = new_kx
 
         # Save changes
         S['Links'][concerned_link]['Changes']['Capacity']['Times'].append(NextAction['Time'])
-        S['Links'][concerned_link]['Changes']['FD -> kx']['Times'].append(NextAction['Time'])
+        # S['Links'][concerned_link]['Changes']['FD -> kx']['Times'].append(NextAction['Time'])
         S['Links'][concerned_link]['Changes']['NumLanes']['Times'].append(NextAction['Time'])
         S['Links'][concerned_link]['Changes']['Capacity']['Times'].append(new_Capacity)
-        S['Links'][concerned_link]['Changes']['FD -> kx']['Times'].append(new_NumLanes)
-        S['Links'][concerned_link]['Changes']['NumLanes']['Times'].append(new_kx)
+        # S['Links'][concerned_link]['Changes']['FD -> kx']['Times'].append(new_kx)
+        S['Links'][concerned_link]['Changes']['NumLanes']['Times'].append(new_NumLanes)
         # ...
         if NextAction['Args']['Display']:
             print(
-                f"@Stream[{NextAction['Time']}] : adaptating the number of lane for link {concerned_link} : Capacity {new_Capacity}, NumLanes {new_NumLanes} and kx {new_kx}")
-
-    # ...
-    if NextAction['Type'] == 'storm':
-        Args = NextAction['Args']
-        concerned_link = Args['LinkID']
-
-        if concerned_link != 'All':
-            warnings.warn('Storm on a selection of links is not implemented yet. Storm is apply on all links')
-            concerned_link = 'All'
-        
-        for link in S['Links']: #For all network links
-            # Keep track of changes
-            required_keys = ['Capacity', 'Speed', 'FD -> w']
-            S = initialize_Changes(S, link, required_keys)
-
-            # Apply changes            
-            S['Links'][link]['Capacity'] *= Args['capacity_modulation']
-            S['Links'][link]['Speed'] *= Args['speed_modulation']
-            S['Links'][link]['FD']['w'] *= Args['wavespeed_modulation']
-
-            # Save changes
-            S['Links'][link]['Changes']['Capacity']['Times'].append(NextAction['Time'])
-            S['Links'][link]['Changes']['Speed']['Times'].append(NextAction['Time'])
-            S['Links'][link]['Changes']['FD -> w']['Times'].append(NextAction['Time'])
-            S['Links'][link]['Changes']['Capacity']['Times'].append(S['Links'][link]['Capacity'])
-            S['Links'][link]['Changes']['Speed']['Times'].append(S['Links'][link]['Speed'])
-            S['Links'][link]['Changes']['FD -> w']['Times'].append(S['Links'][link]['FD']['w'])
-        
-        # ...
-        if NextAction['Args']['Display']:
-            print(
-                f"@Stream[{NextAction['Time']}] : Apply storm on entire network : Capacity modulation {Args['capacity_modulation']}, speed modulation {Args['speed_modulation']} and w modulation {Args['wavespeed_modulation']}")
-
+                f"@Stream[{NextAction['Time']}] : adaptating the number of lane for link {concerned_link} : Capacity {new_Capacity} and NumLanes {new_NumLanes}")
+   
     # ...
     if NextAction['Type'] == 'reset_link':
         pass

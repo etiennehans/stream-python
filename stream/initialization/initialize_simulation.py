@@ -2,6 +2,7 @@
 import copy
 import numpy as np
 import warnings
+import logging
 from bisect import bisect
 
 from .validate_and_complete_scenario import update_link_DF
@@ -275,7 +276,7 @@ def initialize_actions(Simulation):
 
                 Action['Type'] = Regulation['Type']
                 Action['Args'] = {
-                    'LinkID': link, 'update_nb_lanes': update_nb_lanes, 'Display': True}
+                    'LinkID': link, 'update_nb_lanes': update_nb_lanes, 'Ratio': update_nb_lanes/Simulation['Links'][link]['NumLanes'], 'Display': True}
                 Simulation['Actions'].append(Action)
 
                 # Add action for ending lane reduction
@@ -284,7 +285,7 @@ def initialize_actions(Simulation):
 
                 Action['Type'] = Regulation['Type']
                 Action['Args'] = {
-                    'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Display': True}
+                    'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Ratio': Simulation['Links'][link]['NumLanes']/update_nb_lanes, 'Display': True}
                 Simulation['Actions'].append(Action)
 
         #...
@@ -298,7 +299,7 @@ def initialize_actions(Simulation):
 
                 Action['Type'] = Regulation['Type']
                 Action['Args'] = {
-                    'LinkID': link, 'update_nb_lanes': update_nb_lanes, 'Display': True}
+                    'LinkID': link, 'update_nb_lanes': update_nb_lanes, 'Ratio': update_nb_lanes/Simulation['Links'][link]['NumLanes'], 'Display': True}
                 Simulation['Actions'].append(Action)
 
                 # Add action for ending lane addition
@@ -307,7 +308,7 @@ def initialize_actions(Simulation):
 
                 Action['Type'] = Regulation['Type']
                 Action['Args'] = {
-                    'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Display': True}
+                    'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Ratio': Simulation['Links'][link]['NumLanes']/update_nb_lanes, 'Display': True}
                 Simulation['Actions'].append(Action)
 
         #...
@@ -331,37 +332,7 @@ def initialize_actions(Simulation):
                         Simulation['Exits'][considered_exit]['Supply']['Data'] = supply_data
                         
                 else:
-                    warnings.warn(f"Link {link} is not an exit link. Cannot apply exit_supply on it.")
-
-        #...
-        if Regulation['Type'] == 'storm':
-            # Add action for starting the storm (one action for the entire network)
-            Action = {}
-            Action['Time'] = Simulation['General']['SimulationDuration'][0]
-
-            speed_modulation = Regulation['Args']['Parameters']['speed_modulation']
-            wavespeed_modulation = Regulation['Args']['Parameters']['wavespeed_modulation']
-            capacity_modulation = Regulation['Args']['Parameters']['capacity_modulation']
-
-            Action['Type'] = Regulation['Type']
-            Action['Args'] = {
-                'LinkID': 'All', 'speed_modulation': speed_modulation, 'wavespeed_modulation': wavespeed_modulation,
-                'capacity_modulation': capacity_modulation, 'Display': True}
-            Simulation['Actions'].append(Action)
-
-            # Add action for ending the storm (one action for the entire network)
-            Action = {}
-            Action['Time'] = Simulation['General']['SimulationDuration'][1]
-
-            speed_modulation = 1/Regulation['Args']['Parameters']['speed_modulation']
-            wavespeed_modulation = 1/Regulation['Args']['Parameters']['wavespeed_modulation']
-            capacity_modulation = 1/Regulation['Args']['Parameters']['capacity_modulation']
-
-            Action['Type'] = Regulation['Type']
-            Action['Args'] = {
-                'LinkID': 'All', 'speed_modulation': speed_modulation, 'wavespeed_modulation': wavespeed_modulation,
-                'capacity_modulation': capacity_modulation, 'Display': True}
-            Simulation['Actions'].append(Action)
+                    logging.warning(f"Link {link} is not an exit link. Cannot apply exit_supply on it.")
 
     # ...
     # Sort actions
