@@ -311,29 +311,6 @@ def initialize_actions(Simulation):
                     'LinkID': link, 'update_nb_lanes': Simulation['Links'][link]['NumLanes'], 'Ratio': Simulation['Links'][link]['NumLanes']/update_nb_lanes, 'Display': True}
                 Simulation['Actions'].append(Action)
 
-        #...
-        if Regulation['Type'] == 'exit_supply':
-            #Changes are performed in Simulation['Exits'][ExitID]['Supply'] and not as a modification of link properties
-            for link in Regulation['Args']['Links']:
-                considered_exit = Simulation['Links'][link]['NodeDownID']
-                if considered_exit in Simulation['Exits'].keys():   #If NodeDown for the selected link is indeed an exit link. Otherwise send a warning
-                    for i, time in enumerate(Regulation['Args']['Times']):
-                        
-                        exit_capacity = Regulation['Args']['Parameters'][i]['exit_capacity']
-
-                        supply_times = Simulation['Exits'][considered_exit]['Supply']['Time']
-                        supply_data = Simulation['Exits'][considered_exit]['Supply']['Data']
-
-                        i = bisect(supply_times, time)
-                        supply_times.insert(i, time)
-                        supply_data = np.insert(supply_data, i, exit_capacity)
-
-                        Simulation['Exits'][considered_exit]['Supply']['Time'] = supply_times
-                        Simulation['Exits'][considered_exit]['Supply']['Data'] = supply_data
-                        
-                else:
-                    logging.warning(f"Link {link} is not an exit link. Cannot apply exit_supply on it.")
-
     # ...
     # Sort actions
     Simulation['Actions'] = sortActionsByTime(Simulation["Actions"])
