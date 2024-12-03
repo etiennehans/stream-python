@@ -457,8 +457,47 @@ def next_passage_time(Nodes, NodeID, NextArrivals, NextSupplyTimes, Signals):
                 # Calcul des prochains temps de calcul au vert ou au rouge
                 f_red = np.where(red_starts > PassageTime)[0][0]
                 f_green = np.where(green_starts > PassageTime)[0][0]
-                # if the next switching time is green, the light is now red
-                if green_starts[f_green] < red_starts[f_red]:
+                
+                ## Determine current light color
+                if red_starts[f_red] == np.inf and green_starts[f_green] == np.inf:
+                    # Manage case when next colors switches are both inf 
+                    f_red_ninf = np.where(red_starts != np.inf)[0]
+                    f_green_ninf = np.where(green_starts != np.inf)[0]
+                    if len(f_red_ninf) == 0 and len(f_green_ninf) > 0:
+                        # Last switch was for going green, the light is still green 
+                        light_is_red = False
+                    elif len(f_red_ninf) > 0 and len(f_green_ninf) == 0:
+                        # Last switch was for going red, the light is still red 
+                        light_is_red = True
+                    elif len(f_red_ninf) == 0 and len(f_green_ninf) == 0:
+                        # The traffic light definition is empty, consider as all time green then 
+                        light_is_red = False
+                    else:
+                        last_ninf_red_start = red_starts[f_red_ninf[-1]]
+                        last_ninf_green_start = green_starts[f_green_ninf[-1]]
+                        if last_ninf_green_start < last_ninf_red_start:
+                            # Last switch was for going red, the light is still red
+                            light_is_red = True
+                        elif last_ninf_green_start > last_ninf_red_start:
+                            # Last switch was for going green, the light is still green 
+                            light_is_red = False
+                        else:
+                            # We should not have a red and green starting at the same time...
+                            # Consider light as green not to throw an error but review the 
+                            # algorithm dealing with traffic lights conversion in the meso wrapper !
+                            light_is_red = False
+                else:
+                    # if the next switching time is green, the light is now red
+                    if green_starts[f_green] < red_starts[f_red]:
+                        light_is_red = True
+                    elif green_starts[f_green] > red_starts[f_red]:
+                        light_is_red = False
+                    else:
+                        # We should not have a red and green starting at the same time... consider as green 
+                        light_is_red = False
+  
+                ## Deduce next passage time 
+                if light_is_red:
                     PassageTime = green_starts[f_green]
                 NextPassageTime[IN, out] = PassageTime
 
